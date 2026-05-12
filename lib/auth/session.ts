@@ -34,18 +34,54 @@ export async function requireAuth(): Promise<AuthContext> {
     .eq('id', user.id)
     .maybeSingle()
 
-  const { data: membership } = await supabase
+  let membershipRecord: {
+    id: string
+    company_id: string
+    role: string
+    is_default: boolean
+  } | null = null
+
+  let companyRecord: {
+    name: string
+    slug: string | null
+    status: string
+  } | null = null
+
+  const primaryMembershipResult = await supabase
     .from('company_memberships')
-    .select('id, company_id, role, is_default, companies(name, slug, status)')
+    .select('id, company_id, role, is_default')
     .eq('user_id', user.id)
     .eq('status', 'active')
-    .order('is_default', { ascending: false })
+    .eq('is_default', true)
     .limit(1)
     .maybeSingle()
 
-  const company = Array.isArray(membership?.companies) ? membership?.companies[0] : membership?.companies
+  if (primaryMembershipResult.data) {
+    membershipRecord = primaryMembershipResult.data
+  } else {
+    const fallbackMembershipResult = await supabase
+      .from('company_memberships')
+      .select('id, company_id, role, is_default')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
 
-  if (membership && company?.status === 'inactive') {
+    membershipRecord = fallbackMembershipResult.data
+  }
+
+  if (membershipRecord) {
+    const { data: company } = await supabase
+      .from('companies')
+      .select('name, slug, status')
+      .eq('id', membershipRecord.company_id)
+      .maybeSingle()
+
+    companyRecord = company
+  }
+
+  if (membershipRecord && companyRecord?.status === 'inactive') {
     redirect('/login?error=inactive-company')
   }
 
@@ -54,14 +90,15 @@ export async function requireAuth(): Promise<AuthContext> {
     email: user.email ?? null,
     profileName: profile?.full_name ?? null,
     platformRole: (profile?.platform_role ?? null) as PlatformRole,
-    membership: membership
-      ? {
-          membershipId: membership.id,
-          companyId: membership.company_id,
-          companyName: company?.name ?? 'Unknown company',
-          companySlug: company?.slug ?? null,
-          companyRole: membership.role as CompanyRole,
-        }
-      : null,
+    membership:
+      membershipRecord && companyRecord
+        ? {
+            membershipId: membershipRecord.id,
+            companyId: membershipRecord.company_id,
+            companyName: companyRecord.name ?? 'Unknown company',
+            companySlug: companyRecord.slug ?? null,
+            companyRole: membershipRecord.role as CompanyRole,
+          }
+        : null,
   }
 }

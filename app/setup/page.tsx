@@ -94,7 +94,7 @@ export default function SetupPage() {
       if (!active) return
 
       if (membership) {
-        router.replace('/dashboard')
+        window.location.replace('/dashboard')
         return
       }
 
@@ -108,10 +108,38 @@ export default function SetupPage() {
     }
   }, [router, supabase])
 
+  async function waitForMembership(userId: string) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const { data } = await supabase
+        .from('company_memberships')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle()
+
+      if (data?.id) return true
+
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
+    }
+
+    return false
+  }
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoading(true)
     setError(null)
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      setLoading(false)
+      setError('Du måste vara inloggad för att fortsätta.')
+      return
+    }
 
     const { error } = await supabase.rpc('bootstrap_company_for_current_user', {
       p_company_name: form.companyName,
@@ -122,15 +150,21 @@ export default function SetupPage() {
       p_default_team_name: form.defaultTeamName,
     })
 
-    setLoading(false)
-
     if (error) {
+      setLoading(false)
       setError(friendlyError(error.message))
       return
     }
 
-    router.replace('/dashboard')
-    router.refresh()
+    const membershipReady = await waitForMembership(user.id)
+    setLoading(false)
+
+    if (!membershipReady) {
+      setError('Företaget skapades, men medlemskapet blev inte synligt direkt. Ladda om sidan och prova igen.')
+      return
+    }
+
+    window.location.replace('/dashboard')
   }
 
   if (checking) {
@@ -158,8 +192,8 @@ export default function SetupPage() {
                 Skapa din första Coordiqo-miljö
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
-                Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen
-                tenant, grundinställningar och ditt första team direkt.
+                Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen tenant,
+                grundinställningar och ditt första team direkt. Objektmodellen låses inte här, utan blir branschstyrd i nästa batch.
               </p>
             </div>
 
@@ -222,17 +256,16 @@ export default function SetupPage() {
                   type="text"
                   value={form.orgNumber}
                   onChange={(e) => setForm((prev) => ({ ...prev, orgNumber: e.target.value }))}
-                  placeholder="559000-0000"
+                  placeholder="559123-4567"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Första teamets namn</label>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">Tidszon</label>
                 <input
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
                   type="text"
-                  value={form.defaultTeamName}
-                  onChange={(e) => setForm((prev) => ({ ...prev, defaultTeamName: e.target.value }))}
-                  placeholder="Huvudteam"
+                  value={form.timezone}
+                  onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))}
                 />
               </div>
             </div>
@@ -269,20 +302,20 @@ export default function SetupPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Tidszon</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Första teamets namn</label>
               <input
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
                 type="text"
-                value={form.timezone}
-                onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))}
-                placeholder="Europe/Stockholm"
+                value={form.defaultTeamName}
+                onChange={(e) => setForm((prev) => ({ ...prev, defaultTeamName: e.target.value }))}
+                placeholder="Huvudteam"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'Skapar företag...' : 'Skapa företag och fortsätt'}
             </button>

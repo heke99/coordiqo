@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 
 import { requireAuth } from '@/lib/auth/session'
@@ -18,8 +20,8 @@ export default async function DashboardPage() {
                   {auth.profileName ? `Hej ${auth.profileName}` : 'Din dashboard är igång'}
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-                  Grunden är nu på plats för tenant, onboarding och dashboard. Nästa steg är att bygga team,
-                  objekt, uppdrag och planeringsflöden ovanpå en stabil bas.
+                  Coordiqos grund är nu på plats för tenant, onboarding och dashboard. Nästa steg är att bygga team,
+                  objekt, uppdrag och planeringsflöden ovanpå en stabil bas utan att gränssnittet känns som en demo.
                 </p>
               </div>
             </div>
@@ -40,15 +42,15 @@ export default async function DashboardPage() {
               <div>
                 <h2 className="text-xl font-semibold text-slate-950">Du behöver slutföra onboarding</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
-                  Ditt konto finns, men det saknar ännu en aktiv företagstillhörighet. Fortsätt till setup så
-                  företag, membership och huvudteam skapas korrekt.
+                  Ditt konto är inloggat, men saknar ännu en aktiv företagstillhörighet. Fortsätt till uppsättningen för
+                  att skapa eller koppla ditt första företag innan du använder plattformen vidare.
                 </p>
               </div>
               <Link
                 href="/setup"
                 className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
               >
-                Slutför setup
+                Gå till setup
               </Link>
             </div>
           </section>
@@ -58,12 +60,12 @@ export default async function DashboardPage() {
               <div className="coordiqo-card p-5">
                 <p className="text-sm font-medium text-slate-500">Aktivt företag</p>
                 <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.companyName}</h2>
-                <p className="mt-2 text-sm text-slate-600">Din tenant är aktiv och redo för fortsatt uppsättning.</p>
+                <p className="mt-2 text-sm text-slate-600">Slug: {auth.membership.companySlug ?? 'saknas ännu'}</p>
               </div>
               <div className="coordiqo-card p-5">
-                <p className="text-sm font-medium text-slate-500">Din roll</p>
+                <p className="text-sm font-medium text-slate-500">Företagsroll</p>
                 <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.companyRole}</h2>
-                <p className="mt-2 text-sm text-slate-600">Behörigheter och navigation kan nu förfinas vidare.</p>
+                <p className="mt-2 text-sm text-slate-600">Rollbaserad styrning byggs vidare i nästa batch.</p>
               </div>
               <div className="coordiqo-card p-5">
                 <p className="text-sm font-medium text-slate-500">Plattformsroll</p>
@@ -90,7 +92,7 @@ export default async function DashboardPage() {
                   <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
                     <p className="text-sm font-semibold text-slate-900">Onboardingflöde</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Konto, setup och dashboard hänger nu ihop så att nya företag kan startas utan manuella steg.
+                      Konto, setup och dashboard hänger ihop så att nya företag kan startas utan manuella SQL-steg.
                     </p>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
@@ -102,7 +104,7 @@ export default async function DashboardPage() {
                   <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
                     <p className="text-sm font-semibold text-slate-900">Redo för nästa batch</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Nu kan vi fortsätta med teamhantering, entities, uppdrag och mer verklig operationslogik.
+                      Nu kan vi fortsätta med branschmotor, flexibel objekttyp-registrering, entities och uppdrag.
                     </p>
                   </div>
                 </div>
@@ -115,7 +117,7 @@ export default async function DashboardPage() {
                   <li>• super admin- och owner-flöde</li>
                   <li>• full permissions matrix i UI</li>
                   <li>• företagssidor för team, objekt och uppdrag</li>
-                  <li>• mer produktmässig navigation mellan moduler</li>
+                  <li>• flexibel, branschstyrd objektmodell i Batch 2</li>
                 </ul>
               </aside>
             </section>

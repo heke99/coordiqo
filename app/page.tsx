@@ -1,27 +1,13 @@
+export const dynamic = 'force-dynamic'
+
 import { redirect } from 'next/navigation'
 
-import { createClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth/session'
 
 export default async function HomePage() {
-  const supabase = await createClient()
+  const auth = await requireAuth()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
-  }
-
-  const { data: membership } = await supabase
-    .from('company_memberships')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .limit(1)
-    .maybeSingle()
-
-  if (!membership) {
+  if (!auth.membership) {
     redirect('/setup')
   }
 
