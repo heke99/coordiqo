@@ -3,43 +3,45 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
-import { EmptyState } from '@/components/ui/empty-state'
 import { requireAuth } from '@/lib/auth/session'
+
+const settingsAreas = [
+  {
+    href: '/settings/industry',
+    title: 'Branschmotor',
+    description: 'Bransch, operativ modell, moduler och branschstyrd navigation.',
+  },
+  {
+    href: '/settings/entity-types',
+    title: 'Objekttyper',
+    description: 'Dynamiska objekttyper, fält och branschspecifika labels utan hårdkodning.',
+  },
+  {
+    href: '/settings/invitations',
+    title: 'Inbjudningar',
+    description: 'Skapa och följ upp inbjudningar innan användaren finns som auth-konto.',
+  },
+  {
+    href: '/settings/permissions',
+    title: 'Behörigheter',
+    description: 'Rollmatris, auditöversikt och grund för framtida permissions overrides.',
+  },
+]
 
 export default async function SettingsPage() {
   const auth = await requireAuth()
   if (!auth.membership) return null
 
   return (
-    <AppShell auth={auth} title="Inställningar" subtitle="Företagets grundinställningar, moduler och framtida säkerhetsval.">
-      <div className="grid gap-5 lg:grid-cols-2">
-        <EmptyState
-          eyebrow="Företagsinställningar"
-          title="Inställningar byggs modul för modul"
-          description="Den här sidan är navet för kommande inställningar: användare, roller, säkerhet, moduler, integrationer och billing. Branschmotorn är första konkreta inställningssidan."
-          action={
-            <Link href="/settings/industry" className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-              Öppna branschmotor
-            </Link>
-          }
-        />
-
-        <section className="coordiqo-card p-6 sm:p-8">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Kommande inställningsområden</h2>
-          <div className="mt-5 space-y-3">
-            {[
-              'Användare och invite flow',
-              'Permissions matrix och roller',
-              'Feature gates och abonnemang',
-              'Audit, supportläge och säkerhet',
-              'Integrationer och API-nycklar',
-            ].map((item) => (
-              <div key={item} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700">
-                {item}
-              </div>
-            ))}
-          </div>
-        </section>
+    <AppShell auth={auth} title="Inställningar" subtitle="Företagets grundinställningar, branschmotor, objektmodell, användare och säkerhet.">
+      <div className="grid gap-5 md:grid-cols-2">
+        {settingsAreas.map((area) => (
+          <Link key={area.href} href={area.href} className="coordiqo-card block p-6 transition hover:-translate-y-0.5 hover:shadow-lg sm:p-8">
+            <p className="text-sm font-medium text-slate-500">Inställning</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">{area.title}</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{area.description}</p>
+          </Link>
+        ))}
       </div>
     </AppShell>
   )

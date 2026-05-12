@@ -12,6 +12,23 @@ function value(formData: FormData, key: string) {
   return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null
 }
 
+function customFieldsFromForm(formData: FormData) {
+  const customFields: Record<string, string> = {}
+
+  for (const [key, rawValue] of formData.entries()) {
+    if (!key.startsWith('cf_')) continue
+    if (typeof rawValue !== 'string') continue
+
+    const fieldKey = key.slice(3)
+    const trimmed = rawValue.trim()
+    if (fieldKey && trimmed !== '') {
+      customFields[fieldKey] = trimmed
+    }
+  }
+
+  return customFields
+}
+
 async function requireMembership(minimumRole: Parameters<typeof assertCompanyPermission>[1], label: string) {
   const auth = await requireAuth()
   if (!auth.membership) redirect('/setup')
@@ -42,6 +59,8 @@ export async function createTeamAction(formData: FormData) {
       name,
       code: value(formData, 'code'),
       description: value(formData, 'description'),
+      area_label: value(formData, 'area_label'),
+      team_lead_staff_profile_id: value(formData, 'team_lead_staff_profile_id'),
       status: value(formData, 'status') ?? 'active',
     })
     .select('id')
@@ -64,6 +83,8 @@ export async function updateTeamAction(formData: FormData) {
       name: value(formData, 'name'),
       code: value(formData, 'code'),
       description: value(formData, 'description'),
+      area_label: value(formData, 'area_label'),
+      team_lead_staff_profile_id: value(formData, 'team_lead_staff_profile_id'),
       status: value(formData, 'status') ?? 'active',
     })
     .eq('id', id)
@@ -267,6 +288,7 @@ export async function createEntityAction(formData: FormData) {
       priority: value(formData, 'priority') ?? 'normal',
       summary: value(formData, 'summary'),
       instructions: value(formData, 'instructions'),
+      custom_fields: customFieldsFromForm(formData),
       created_by: auth.userId,
       updated_by: auth.userId,
     })
@@ -321,6 +343,7 @@ export async function updateEntityAction(formData: FormData) {
       priority: value(formData, 'priority') ?? 'normal',
       summary: value(formData, 'summary'),
       instructions: value(formData, 'instructions'),
+      custom_fields: customFieldsFromForm(formData),
       updated_by: auth.userId,
     })
     .eq('id', id)
@@ -347,4 +370,292 @@ export async function archiveEntityAction(formData: FormData) {
   await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity', id)
   revalidatePath('/entities')
   redirect('/entities')
+}
+
+export async function createInvitationAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skapa inbjudningar')
+  const email = value(formData, 'email')?.toLowerCase()
+  const fullName = value(formData, 'full_name')
+  const role = value(formData, 'role') ?? 'staff'
+  const message = value(formData, 'message')
+
+  if (!email) throw new Error('E-post krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('company_invitations')
+    .insert({
+      company_id: auth.membership!.companyId,
+      email,
+      full_name: fullName,
+      role,
+      message,
+      status: 'pending',
+      invited_by: auth.userId,
+      expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'company_invitation', data.id, { email, role })
+  revalidatePath('/settings/invitations')
+}
+
+export async function cancelInvitationAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att avbryta inbjudningar')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Invite-id saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('company_invitations')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'cancel', 'company_invitation', id)
+  revalidatePath('/settings/invitations')
+}
+
+export async function createEntityTypeAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skapa objekttyper')
+  const labelSingular = value(formData, 'label_singular')
+  const labelPlural = value(formData, 'label_plural')
+  const code = value(formData, 'code')?.toLowerCase().replace(/[^a-z0-9_\-]/g, '_')
+
+  if (!labelSingular) throw new Error('Singular etikett krävs.')
+  if (!labelPlural) throw new Error('Plural etikett krävs.')
+  if (!code) throw new Error('Kod krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_types')
+    .insert({
+      company_id: auth.membership!.companyId,
+      code,
+      label_singular: labelSingular,
+      label_plural: labelPlural,
+      description: value(formData, 'description'),
+      source: 'company_custom',
+      is_active: true,
+      sort_order: Number(value(formData, 'sort_order') ?? 100),
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_type', data.id, { code, labelSingular })
+  revalidatePath('/settings/entity-types')
+  redirect(`/settings/entity-types/${data.id}`)
+}
+
+export async function updateEntityTypeAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att uppdatera objekttyper')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Objekttyp-id saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('entity_types')
+    .update({
+      label_singular: value(formData, 'label_singular'),
+      label_plural: value(formData, 'label_plural'),
+      description: value(formData, 'description'),
+      is_active: value(formData, 'is_active') !== 'false',
+      sort_order: Number(value(formData, 'sort_order') ?? 100),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'entity_type', id)
+  revalidatePath('/settings/entity-types')
+  revalidatePath(`/settings/entity-types/${id}`)
+}
+
+export async function archiveEntityTypeAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att arkivera objekttyper')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Objekttyp-id saknas.')
+
+  const { count } = await supabaseAdmin
+    .from('entities')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', auth.membership!.companyId)
+    .eq('entity_type_id', id)
+    .is('archived_at', null)
+
+  if ((count ?? 0) > 0) {
+    throw new Error('Objekttypen används av aktiva objekt och kan inte arkiveras ännu.')
+  }
+
+  const { error } = await supabaseAdmin
+    .from('entity_types')
+    .update({ is_active: false, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_type', id)
+  revalidatePath('/settings/entity-types')
+  redirect('/settings/entity-types')
+}
+
+export async function createEntityTypeFieldAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skapa dynamiska fält')
+  const entityTypeId = value(formData, 'entity_type_id')
+  const fieldKey = value(formData, 'field_key')?.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  const label = value(formData, 'label')
+  if (!entityTypeId) throw new Error('Objekttyp saknas.')
+  if (!fieldKey) throw new Error('Fältnyckel krävs.')
+  if (!label) throw new Error('Fältetikett krävs.')
+
+  const { data: type } = await supabaseAdmin
+    .from('entity_types')
+    .select('id')
+    .eq('id', entityTypeId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+
+  if (!type) throw new Error('Objekttypen kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_type_fields')
+    .insert({
+      entity_type_id: entityTypeId,
+      field_key: fieldKey,
+      label,
+      field_type: value(formData, 'field_type') ?? 'text',
+      is_required: value(formData, 'is_required') === 'true',
+      is_sensitive: value(formData, 'is_sensitive') === 'true',
+      sort_order: Number(value(formData, 'sort_order') ?? 100),
+      config: {
+        placeholder: value(formData, 'placeholder'),
+        help_text: value(formData, 'help_text'),
+      },
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_type_field', data.id, { entityTypeId, fieldKey })
+  revalidatePath(`/settings/entity-types/${entityTypeId}`)
+}
+
+export async function archiveEntityTypeFieldAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att arkivera dynamiska fält')
+  const id = value(formData, 'id')
+  const entityTypeId = value(formData, 'entity_type_id')
+  if (!id || !entityTypeId) throw new Error('Fält-id saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('entity_type_fields')
+    .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', id)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_type_field', id, { entityTypeId })
+  revalidatePath(`/settings/entity-types/${entityTypeId}`)
+}
+
+export async function createEntityNoteAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa objektnoteringar')
+  const entityId = value(formData, 'entity_id')
+  const note = value(formData, 'note')
+  if (!entityId) throw new Error('Objekt-id saknas.')
+  if (!note) throw new Error('Notering krävs.')
+
+  const { data: entity } = await supabaseAdmin
+    .from('entities')
+    .select('id')
+    .eq('id', entityId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+
+  if (!entity) throw new Error('Objektet kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_notes')
+    .insert({
+      entity_id: entityId,
+      company_id: auth.membership!.companyId,
+      note,
+      visibility: value(formData, 'visibility') ?? 'internal',
+      author_user_id: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_note', data.id, { entityId })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function createEntityDocumentAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att lägga till dokumentmetadata')
+  const entityId = value(formData, 'entity_id')
+  const fileName = value(formData, 'file_name')
+  const storagePath = value(formData, 'storage_path')
+  if (!entityId) throw new Error('Objekt-id saknas.')
+  if (!fileName) throw new Error('Filnamn krävs.')
+  if (!storagePath) throw new Error('Storage path eller extern filreferens krävs.')
+
+  const { data: entity } = await supabaseAdmin
+    .from('entities')
+    .select('id')
+    .eq('id', entityId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+
+  if (!entity) throw new Error('Objektet kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_documents')
+    .insert({
+      entity_id: entityId,
+      company_id: auth.membership!.companyId,
+      file_name: fileName,
+      storage_path: storagePath,
+      document_type: value(formData, 'document_type'),
+      mime_type: value(formData, 'mime_type'),
+      uploaded_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_document', data.id, { entityId, fileName })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function createEntityRelationAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa objektrelationer')
+  const parentEntityId = value(formData, 'parent_entity_id')
+  const childEntityId = value(formData, 'child_entity_id')
+  if (!parentEntityId || !childEntityId) throw new Error('Både huvudobjekt och kopplat objekt krävs.')
+  if (parentEntityId === childEntityId) throw new Error('Ett objekt kan inte relateras till sig självt.')
+
+  const { data: child } = await supabaseAdmin
+    .from('entities')
+    .select('id')
+    .eq('id', childEntityId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+
+  if (!child) throw new Error('Det kopplade objektet kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_relations')
+    .insert({
+      company_id: auth.membership!.companyId,
+      parent_entity_id: parentEntityId,
+      child_entity_id: childEntityId,
+      relation_type: value(formData, 'relation_type') ?? 'related',
+      created_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_relation', data.id, { parentEntityId, childEntityId })
+  revalidatePath(`/entities/${parentEntityId}`)
 }
