@@ -22,14 +22,14 @@ export default async function SkillsSettingsPage() {
     <AppShell auth={auth} title="Kompetenser & regler" subtitle="Batch 6: styr vem som får göra vad med kompetenser, certifikat och regelkontroll.">
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <div className="space-y-5">
-          <FormCard title="Ny kompetens" description="Kompetenser används som krav på uppdrag och som profilering på personal.">
+          <FormCard title="Skapa eller uppdatera kompetens" description="Koden är unik per företag. Om samma kod redan finns uppdateras kompetensen istället för att krascha.">
             <form action={createSkillAction} className="grid gap-4 sm:grid-cols-2">
               <Field label="Namn"><input name="name" required className={inputClassName} placeholder="Ex. Nyckelhantering" /></Field>
-              <Field label="Kod"><input name="code" required className={inputClassName} placeholder="key_handling" /></Field>
+              <Field label="Kod"><input name="code" className={inputClassName} placeholder="key_handling eller lämna tomt för auto-kod" /></Field>
               <Field label="Kategori"><input name="category" className={inputClassName} placeholder="general / care / property" /></Field>
               <Field label="Status"><select name="is_active" defaultValue="true" className={selectClassName}><option value="true">Aktiv</option><option value="false">Inaktiv</option></select></Field>
               <div className="sm:col-span-2"><Field label="Beskrivning"><textarea name="description" className={textareaClassName} /></Field></div>
-              <div className="sm:col-span-2"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Skapa kompetens</button></div>
+              <div className="sm:col-span-2"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Spara kompetens</button></div>
             </form>
           </FormCard>
 
@@ -49,14 +49,14 @@ export default async function SkillsSettingsPage() {
         </div>
 
         <div className="space-y-5">
-          <FormCard title="Nytt certifikat" description="Certifikat kan ha giltighetstid och blockera uppdrag när de saknas eller gått ut.">
+          <FormCard title="Skapa eller uppdatera certifikat" description="Koden är unik per företag. Om samma kod redan finns uppdateras certifikatet istället för att skapa dubblett.">
             <form action={createCertificationAction} className="grid gap-4 sm:grid-cols-2">
               <Field label="Namn"><input name="name" required className={inputClassName} placeholder="Ex. B-körkort" /></Field>
-              <Field label="Kod"><input name="code" required className={inputClassName} placeholder="drivers_license_b" /></Field>
+              <Field label="Kod"><input name="code" className={inputClassName} placeholder="drivers_license_b eller lämna tomt för auto-kod" /></Field>
               <Field label="Kategori"><input name="category" className={inputClassName} placeholder="transport / compliance" /></Field>
               <Field label="Kräver utgångsdatum"><select name="requires_expiry" defaultValue="true" className={selectClassName}><option value="true">Ja</option><option value="false">Nej</option></select></Field>
               <div className="sm:col-span-2"><Field label="Beskrivning"><textarea name="description" className={textareaClassName} /></Field></div>
-              <div className="sm:col-span-2"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Skapa certifikat</button></div>
+              <div className="sm:col-span-2"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Spara certifikat</button></div>
             </form>
           </FormCard>
 

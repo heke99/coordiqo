@@ -14,6 +14,18 @@ function value(formData: FormData, key: string) {
   return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null
 }
 
+function normalizeCode(input: string | null) {
+  return input
+    ?.trim()
+    .toLowerCase()
+    .replace(/å/g, 'a')
+    .replace(/ä/g, 'a')
+    .replace(/ö/g, 'o')
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) ?? null
+}
+
 function customFieldsFromForm(formData: FormData) {
   const customFields: Record<string, string> = {}
 
@@ -1090,27 +1102,31 @@ export async function archiveEntityDocumentAction(formData: FormData) {
 
 
 export async function createSkillAction(formData: FormData) {
-  const auth = await requireMembership('operations_manager', 'att skapa kompetenser')
+  const auth = await requireMembership('operations_manager', 'att skapa eller uppdatera kompetenser')
   const name = value(formData, 'name')
-  const code = value(formData, 'code')?.toLowerCase().replace(/[^a-z0-9_\-]/g, '_')
+  const code = normalizeCode(value(formData, 'code') ?? name)
   if (!name) throw new Error('Kompetensnamn krävs.')
   if (!code) throw new Error('Kompetenskod krävs.')
 
+  const payload = {
+    company_id: auth.membership!.companyId,
+    code,
+    name,
+    category: value(formData, 'category') ?? 'general',
+    description: value(formData, 'description'),
+    is_active: value(formData, 'is_active') !== 'false',
+    archived_at: null,
+    updated_at: new Date().toISOString(),
+  }
+
   const { data, error } = await supabaseAdmin
     .from('skills')
-    .insert({
-      company_id: auth.membership!.companyId,
-      code,
-      name,
-      category: value(formData, 'category') ?? 'general',
-      description: value(formData, 'description'),
-      is_active: value(formData, 'is_active') !== 'false',
-    })
+    .upsert(payload, { onConflict: 'company_id,code' })
     .select('id')
     .single()
 
   if (error) throw new Error(error.message)
-  await audit(auth.membership!.companyId, auth.userId, 'create', 'skill', data.id, { code, name })
+  await audit(auth.membership!.companyId, auth.userId, 'upsert', 'skill', data.id, { code, name })
   revalidatePath('/settings/skills')
 }
 
@@ -1125,28 +1141,32 @@ export async function archiveSkillAction(formData: FormData) {
 }
 
 export async function createCertificationAction(formData: FormData) {
-  const auth = await requireMembership('operations_manager', 'att skapa certifikat')
+  const auth = await requireMembership('operations_manager', 'att skapa eller uppdatera certifikat')
   const name = value(formData, 'name')
-  const code = value(formData, 'code')?.toLowerCase().replace(/[^a-z0-9_\-]/g, '_')
+  const code = normalizeCode(value(formData, 'code') ?? name)
   if (!name) throw new Error('Certifikatnamn krävs.')
   if (!code) throw new Error('Certifikatkod krävs.')
 
+  const payload = {
+    company_id: auth.membership!.companyId,
+    code,
+    name,
+    category: value(formData, 'category') ?? 'general',
+    description: value(formData, 'description'),
+    requires_expiry: value(formData, 'requires_expiry') !== 'false',
+    is_active: value(formData, 'is_active') !== 'false',
+    archived_at: null,
+    updated_at: new Date().toISOString(),
+  }
+
   const { data, error } = await supabaseAdmin
     .from('certifications')
-    .insert({
-      company_id: auth.membership!.companyId,
-      code,
-      name,
-      category: value(formData, 'category') ?? 'general',
-      description: value(formData, 'description'),
-      requires_expiry: value(formData, 'requires_expiry') !== 'false',
-      is_active: value(formData, 'is_active') !== 'false',
-    })
+    .upsert(payload, { onConflict: 'company_id,code' })
     .select('id')
     .single()
 
   if (error) throw new Error(error.message)
-  await audit(auth.membership!.companyId, auth.userId, 'create', 'certification', data.id, { code, name })
+  await audit(auth.membership!.companyId, auth.userId, 'upsert', 'certification', data.id, { code, name })
   revalidatePath('/settings/skills')
 }
 
