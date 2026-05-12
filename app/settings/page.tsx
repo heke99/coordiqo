@@ -24,7 +24,17 @@ const settingsAreas = [
   {
     href: '/settings/permissions',
     title: 'Behörigheter',
-    description: 'Rollmatris, auditöversikt och grund för framtida permissions overrides.',
+    description: 'Rollmatris, auditöversikt och faktiska permissions overrides per företag.',
+  },
+  {
+    href: '/settings/audit',
+    title: 'Auditlogg',
+    description: 'Fullt ändringsspår för create/update/archive, invites, uppdrag och supportläge.',
+  },
+  {
+    href: '/settings/support',
+    title: 'Supportläge',
+    description: 'Spårbara supportsessioner och grund för säker view-as/impersonation.',
   },
 ]
 

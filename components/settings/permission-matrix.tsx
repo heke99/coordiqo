@@ -1,4 +1,5 @@
 import { COMPANY_ROLE_LABELS, COMPANY_ROLE_RANK, PERMISSION_MATRIX, type CompanyRole, type PermissionAction } from '@/lib/auth/permissions'
+import { updatePermissionOverrideAction } from '@/lib/platform/actions'
 
 const roles = Object.keys(COMPANY_ROLE_RANK).sort(
   (a, b) => COMPANY_ROLE_RANK[b as CompanyRole] - COMPANY_ROLE_RANK[a as CompanyRole]
@@ -6,16 +7,25 @@ const roles = Object.keys(COMPANY_ROLE_RANK).sort(
 
 const actions = Object.keys(PERMISSION_MATRIX) as PermissionAction[]
 
-export function PermissionMatrix() {
+type PermissionRow = {
+  role: string
+  permission_key: string
+  is_allowed: boolean
+  source: string
+}
+
+export function PermissionMatrix({ permissions = [] }: { permissions?: PermissionRow[] }) {
+  const overrideMap = new Map(permissions.map((permission) => [`${permission.role}:${permission.permission_key}`, permission]))
+
   return (
     <section className="coordiqo-card overflow-hidden">
       <div className="border-b border-slate-200 p-5 sm:p-6">
-        <h2 className="text-xl font-semibold tracking-tight text-slate-950">Rollmatris</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">Rollmatris med overrides</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Den här matrisen visar nuvarande kodstyrda behörighetsgränser. I nästa steg kan vi göra företagsunika overrides ovanpå samma struktur.
+          Matrisen visar faktiska company-permissions. Varje cell kan skrivas över per företag och loggas i audit.
         </p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto coordiqo-scrollbar">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
@@ -33,12 +43,24 @@ export function PermissionMatrix() {
                   <p className="mt-1 text-xs leading-5 text-slate-500">{PERMISSION_MATRIX[action].description}</p>
                 </td>
                 {roles.map((role) => {
-                  const allowed = COMPANY_ROLE_RANK[role] >= COMPANY_ROLE_RANK[PERMISSION_MATRIX[action].minimumRole]
+                  const stored = overrideMap.get(`${role}:${action}`)
+                  const fallbackAllowed = COMPANY_ROLE_RANK[role] >= COMPANY_ROLE_RANK[PERMISSION_MATRIX[action].minimumRole]
+                  const allowed = stored?.is_allowed ?? fallbackAllowed
+                  const source = stored?.source ?? 'kod-default'
                   return (
-                    <td key={`${action}-${role}`} className="px-4 py-4">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${allowed ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-400 ring-1 ring-slate-100'}`}>
-                        {allowed ? 'Tillåtet' : 'Nej'}
-                      </span>
+                    <td key={`${action}-${role}`} className="px-4 py-4 align-top">
+                      <div className="space-y-2">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${allowed ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-400 ring-1 ring-slate-100'}`}>
+                          {allowed ? 'Tillåtet' : 'Nej'}
+                        </span>
+                        <p className="text-[11px] text-slate-400">{source}</p>
+                        <form action={updatePermissionOverrideAction} className="flex gap-1">
+                          <input type="hidden" name="role" value={role} />
+                          <input type="hidden" name="permission_key" value={action} />
+                          <button name="is_allowed" value="true" className="rounded-xl border border-emerald-200 px-2 py-1 text-[11px] font-semibold text-emerald-700">Ja</button>
+                          <button name="is_allowed" value="false" className="rounded-xl border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600">Nej</button>
+                        </form>
+                      </div>
                     </td>
                   )
                 })}

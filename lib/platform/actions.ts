@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 
 import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
+import { queueAndSendEmail } from '@/lib/email/outbound'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function value(formData: FormData, key: string) {
@@ -393,11 +394,43 @@ export async function createInvitationAction(formData: FormData) {
       invited_by: auth.userId,
       expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
     })
-    .select('id')
+    .select('id, token')
     .single()
 
   if (error) throw new Error(error.message)
-  await audit(auth.membership!.companyId, auth.userId, 'create', 'company_invitation', data.id, { email, role })
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  const acceptUrl = `${siteUrl}/invite/accept?token=${data.token}`
+  const delivery = await queueAndSendEmail({
+    companyId: auth.membership!.companyId,
+    to: email,
+    subject: `Inbjudan till ${auth.membership!.companyName} i Coordiqo`,
+    bodyText: [
+      `Hej${fullName ? ` ${fullName}` : ''},`,
+      '',
+      `${auth.profileName ?? 'En administratör'} har bjudit in dig till ${auth.membership!.companyName} i Coordiqo.`,
+      `Roll: ${role}`,
+      message ? `Meddelande: ${message}` : null,
+      '',
+      `Acceptera inbjudan här: ${acceptUrl}`,
+      '',
+      'Länken är tidsbegränsad och ska inte delas vidare.',
+    ].filter(Boolean).join('\n'),
+    relatedEntityType: 'company_invitation',
+    relatedEntityId: data.id,
+    createdBy: auth.userId,
+  })
+
+  await supabaseAdmin
+    .from('company_invitations')
+    .update({
+      email_delivery_status: delivery.status === 'sent' ? 'sent' : delivery.status === 'failed' ? 'failed' : 'queued',
+      email_sent_at: delivery.status === 'sent' ? new Date().toISOString() : null,
+      last_email_error: delivery.status === 'failed' ? delivery.error ?? 'E-postutskick misslyckades' : null,
+    })
+    .eq('id', data.id)
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'company_invitation', data.id, { email, role, emailDelivery: delivery.status })
   revalidatePath('/settings/invitations')
 }
 
@@ -650,6 +683,7 @@ export async function createEntityRelationAction(formData: FormData) {
       parent_entity_id: parentEntityId,
       child_entity_id: childEntityId,
       relation_type: value(formData, 'relation_type') ?? 'related',
+      notes: value(formData, 'notes'),
       created_by: auth.userId,
     })
     .select('id')
@@ -658,4 +692,390 @@ export async function createEntityRelationAction(formData: FormData) {
   if (error) throw new Error(error.message)
   await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_relation', data.id, { parentEntityId, childEntityId })
   revalidatePath(`/entities/${parentEntityId}`)
+}
+
+export async function acceptInvitationAction(formData: FormData) {
+  const auth = await requireAuth()
+  const token = value(formData, 'token')
+  if (!token) throw new Error('Invite-token saknas.')
+
+  const { data: invitation, error: inviteError } = await supabaseAdmin
+    .from('company_invitations')
+    .select('id, company_id, email, full_name, role, status, expires_at')
+    .eq('token', token)
+    .maybeSingle()
+
+  if (inviteError) throw new Error(inviteError.message)
+  if (!invitation) throw new Error('Inbjudan kunde inte hittas.')
+  if (invitation.status !== 'pending') throw new Error('Inbjudan är inte längre aktiv.')
+  if (new Date(invitation.expires_at).getTime() < Date.now()) throw new Error('Inbjudan har gått ut.')
+  if (auth.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+    throw new Error(`Du är inloggad som ${auth.email ?? 'okänd användare'}, men inbjudan gäller ${invitation.email}.`)
+  }
+
+  const { data: existing } = await supabaseAdmin
+    .from('company_memberships')
+    .select('id')
+    .eq('company_id', invitation.company_id)
+    .eq('user_id', auth.userId)
+    .maybeSingle()
+
+  let membershipId = existing?.id ?? null
+
+  if (membershipId) {
+    const { error } = await supabaseAdmin
+      .from('company_memberships')
+      .update({ role: invitation.role, status: 'active', is_default: true })
+      .eq('id', membershipId)
+    if (error) throw new Error(error.message)
+  } else {
+    const { data: membership, error } = await supabaseAdmin
+      .from('company_memberships')
+      .insert({
+        company_id: invitation.company_id,
+        user_id: auth.userId,
+        role: invitation.role,
+        status: 'active',
+        is_default: true,
+      })
+      .select('id')
+      .single()
+    if (error) throw new Error(error.message)
+    membershipId = membership.id
+  }
+
+  await supabaseAdmin
+    .from('company_memberships')
+    .update({ is_default: false })
+    .eq('user_id', auth.userId)
+    .neq('id', membershipId)
+
+  await supabaseAdmin
+    .from('profiles')
+    .upsert({ id: auth.userId, email: auth.email, full_name: invitation.full_name ?? auth.profileName }, { onConflict: 'id' })
+
+  const { error: updateInviteError } = await supabaseAdmin
+    .from('company_invitations')
+    .update({ status: 'accepted', accepted_by: auth.userId, accepted_at: new Date().toISOString() })
+    .eq('id', invitation.id)
+
+  if (updateInviteError) throw new Error(updateInviteError.message)
+  await audit(invitation.company_id, auth.userId, 'accept', 'company_invitation', invitation.id, { role: invitation.role })
+  revalidatePath('/dashboard')
+  redirect('/dashboard')
+}
+
+export async function createTaskAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa uppdrag')
+  const title = value(formData, 'title')
+  if (!title) throw new Error('Titel krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('tasks')
+    .insert({
+      company_id: auth.membership!.companyId,
+      task_type_id: value(formData, 'task_type_id'),
+      work_order_id: value(formData, 'work_order_id'),
+      service_request_id: value(formData, 'service_request_id'),
+      entity_id: value(formData, 'entity_id'),
+      assigned_team_id: value(formData, 'assigned_team_id'),
+      assigned_staff_id: value(formData, 'assigned_staff_id'),
+      title,
+      description: value(formData, 'description'),
+      instructions: value(formData, 'instructions'),
+      priority: value(formData, 'priority') ?? 'normal',
+      status: value(formData, 'status') ?? 'unscheduled',
+      time_window_start: value(formData, 'time_window_start'),
+      time_window_end: value(formData, 'time_window_end'),
+      scheduled_start: value(formData, 'scheduled_start'),
+      scheduled_end: value(formData, 'scheduled_end'),
+      estimated_duration_minutes: Number(value(formData, 'estimated_duration_minutes') ?? 60),
+      sla_due_at: value(formData, 'sla_due_at'),
+      recurrence_rule: value(formData, 'recurrence_rule'),
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await supabaseAdmin.from('task_status_history').insert({ company_id: auth.membership!.companyId, task_id: data.id, new_status: value(formData, 'status') ?? 'unscheduled', changed_by: auth.userId })
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'task', data.id, { title })
+  revalidatePath('/tasks')
+  redirect(`/tasks/${data.id}`)
+}
+
+export async function updateTaskAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att uppdatera uppdrag')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Uppdrags-id saknas.')
+
+  const { data: current } = await supabaseAdmin
+    .from('tasks')
+    .select('status')
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+
+  const newStatus = value(formData, 'status') ?? 'unscheduled'
+  const { error } = await supabaseAdmin
+    .from('tasks')
+    .update({
+      task_type_id: value(formData, 'task_type_id'),
+      work_order_id: value(formData, 'work_order_id'),
+      service_request_id: value(formData, 'service_request_id'),
+      entity_id: value(formData, 'entity_id'),
+      assigned_team_id: value(formData, 'assigned_team_id'),
+      assigned_staff_id: value(formData, 'assigned_staff_id'),
+      title: value(formData, 'title'),
+      description: value(formData, 'description'),
+      instructions: value(formData, 'instructions'),
+      priority: value(formData, 'priority') ?? 'normal',
+      status: newStatus,
+      time_window_start: value(formData, 'time_window_start'),
+      time_window_end: value(formData, 'time_window_end'),
+      scheduled_start: value(formData, 'scheduled_start'),
+      scheduled_end: value(formData, 'scheduled_end'),
+      estimated_duration_minutes: Number(value(formData, 'estimated_duration_minutes') ?? 60),
+      sla_due_at: value(formData, 'sla_due_at'),
+      recurrence_rule: value(formData, 'recurrence_rule'),
+      updated_by: auth.userId,
+    })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  if (current?.status !== newStatus) {
+    await supabaseAdmin.from('task_status_history').insert({ company_id: auth.membership!.companyId, task_id: id, old_status: current?.status, new_status: newStatus, changed_by: auth.userId })
+  }
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'task', id)
+  revalidatePath('/tasks')
+  revalidatePath(`/tasks/${id}`)
+}
+
+export async function archiveTaskAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att arkivera uppdrag')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Uppdrags-id saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('tasks')
+    .update({ status: 'archived', archived_at: new Date().toISOString(), updated_by: auth.userId })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'task', id)
+  revalidatePath('/tasks')
+  redirect('/tasks')
+}
+
+export async function createTaskCommentAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att kommentera uppdrag')
+  const taskId = value(formData, 'task_id')
+  const comment = value(formData, 'comment')
+  if (!taskId || !comment) throw new Error('Uppdrag och kommentar krävs.')
+
+  const { data: task } = await supabaseAdmin.from('tasks').select('id').eq('id', taskId).eq('company_id', auth.membership!.companyId).maybeSingle()
+  if (!task) throw new Error('Uppdraget kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('task_comments')
+    .insert({ company_id: auth.membership!.companyId, task_id: taskId, comment, visibility: value(formData, 'visibility') ?? 'internal', author_user_id: auth.userId })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'task_comment', data.id, { taskId })
+  revalidatePath(`/tasks/${taskId}`)
+}
+
+export async function createWorkOrderAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa arbetsorder')
+  const title = value(formData, 'title')
+  if (!title) throw new Error('Titel krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('work_orders')
+    .insert({
+      company_id: auth.membership!.companyId,
+      service_request_id: value(formData, 'service_request_id'),
+      entity_id: value(formData, 'entity_id'),
+      title,
+      description: value(formData, 'description'),
+      priority: value(formData, 'priority') ?? 'normal',
+      status: value(formData, 'status') ?? 'open',
+      due_at: value(formData, 'due_at'),
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'work_order', data.id, { title })
+  revalidatePath('/work-orders')
+  redirect('/work-orders')
+}
+
+export async function updatePermissionOverrideAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att uppdatera behörigheter')
+  const role = value(formData, 'role')
+  const permissionKey = value(formData, 'permission_key')
+  const isAllowed = value(formData, 'is_allowed') === 'true'
+  if (!role || !permissionKey) throw new Error('Roll och permission krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('company_role_permissions')
+    .upsert({
+      company_id: auth.membership!.companyId,
+      role,
+      permission_key: permissionKey,
+      is_allowed: isAllowed,
+      source: 'company_override',
+      updated_by: auth.userId,
+    }, { onConflict: 'company_id,role,permission_key' })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'override', 'company_role_permission', data.id, { role, permissionKey, isAllowed })
+  revalidatePath('/settings/permissions')
+}
+
+export async function createSupportSessionAction(formData: FormData) {
+  const auth = await requireMembership('company_admin', 'att starta supportläge')
+  const reason = value(formData, 'reason')
+  if (!reason) throw new Error('Anledning krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('support_sessions')
+    .insert({ company_id: auth.membership!.companyId, support_user_id: auth.userId, target_membership_id: value(formData, 'target_membership_id'), reason })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'start', 'support_session', data.id, { reason })
+  revalidatePath('/settings/support')
+}
+
+export async function endSupportSessionAction(formData: FormData) {
+  const auth = await requireMembership('company_admin', 'att avsluta supportläge')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Supportsession saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('support_sessions')
+    .update({ status: 'ended', ended_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'end', 'support_session', id)
+  revalidatePath('/settings/support')
+}
+
+export async function updateEntityNoteAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att uppdatera objektnoteringar')
+  const id = value(formData, 'id')
+  const entityId = value(formData, 'entity_id')
+  const note = value(formData, 'note')
+  if (!id || !entityId || !note) throw new Error('Notering saknar obligatoriska fält.')
+
+  const { error } = await supabaseAdmin
+    .from('entity_notes')
+    .update({ note, visibility: value(formData, 'visibility') ?? 'internal', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'entity_note', id, { entityId })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function archiveEntityNoteAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera objektnoteringar')
+  const id = value(formData, 'id')
+  const entityId = value(formData, 'entity_id')
+  if (!id || !entityId) throw new Error('Notering saknar id.')
+
+  const { error } = await supabaseAdmin
+    .from('entity_notes')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_note', id, { entityId })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function archiveEntityRelationAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera objektrelationer')
+  const id = value(formData, 'id')
+  const entityId = value(formData, 'entity_id')
+  if (!id || !entityId) throw new Error('Relation saknar id.')
+
+  const { error } = await supabaseAdmin
+    .from('entity_relations')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_relation', id, { entityId })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function uploadEntityDocumentAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att ladda upp dokument')
+  const entityId = value(formData, 'entity_id')
+  const file = formData.get('file')
+  if (!entityId) throw new Error('Objekt-id saknas.')
+  if (!(file instanceof File) || file.size === 0) throw new Error('Fil krävs.')
+
+  const { data: entity } = await supabaseAdmin.from('entities').select('id').eq('id', entityId).eq('company_id', auth.membership!.companyId).maybeSingle()
+  if (!entity) throw new Error('Objektet kunde inte hittas.')
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const storagePath = `${auth.membership!.companyId}/entities/${entityId}/${Date.now()}-${safeName}`
+  const { error: uploadError } = await supabaseAdmin.storage.from('coordiqo-documents').upload(storagePath, file, { upsert: false, contentType: file.type || undefined })
+  if (uploadError) throw new Error(uploadError.message)
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_documents')
+    .insert({
+      entity_id: entityId,
+      company_id: auth.membership!.companyId,
+      file_name: file.name,
+      storage_path: storagePath,
+      mime_type: file.type || null,
+      file_size_bytes: file.size,
+      document_type: value(formData, 'document_type'),
+      description: value(formData, 'description'),
+      uploaded_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'upload', 'entity_document', data.id, { entityId, fileName: file.name })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function archiveEntityDocumentAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera dokument')
+  const id = value(formData, 'id')
+  const entityId = value(formData, 'entity_id')
+  if (!id || !entityId) throw new Error('Dokument saknar id.')
+
+  const { error } = await supabaseAdmin
+    .from('entity_documents')
+    .update({ status: 'archived', archived_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_document', id, { entityId })
+  revalidatePath(`/entities/${entityId}`)
 }

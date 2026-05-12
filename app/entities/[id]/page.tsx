@@ -8,10 +8,14 @@ import { Field, FormCard, inputClassName, selectClassName, textareaClassName } f
 import { StatusBadge } from '@/components/ui/status-badge'
 import {
   archiveEntityAction,
-  createEntityDocumentAction,
+  archiveEntityDocumentAction,
+  archiveEntityNoteAction,
+  archiveEntityRelationAction,
   createEntityNoteAction,
   createEntityRelationAction,
   updateEntityAction,
+  updateEntityNoteAction,
+  uploadEntityDocumentAction,
 } from '@/lib/platform/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -38,9 +42,9 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
     supabaseAdmin.from('entity_addresses').select('*').eq('entity_id', id).order('is_primary', { ascending: false }),
     supabaseAdmin.from('entity_contacts').select('*').eq('entity_id', id).order('is_primary', { ascending: false }),
     supabaseAdmin.from('entity_type_fields').select('id, entity_type_id, field_key, label, field_type, is_required, is_sensitive, config, placeholder, help_text').is('archived_at', null).order('sort_order'),
-    supabaseAdmin.from('entity_notes').select('id, note, visibility, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).order('created_at', { ascending: false }).limit(10),
-    supabaseAdmin.from('entity_documents').select('id, file_name, storage_path, document_type, status, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
-    supabaseAdmin.from('entity_relations').select('id, relation_type, child_entity_id, entities!entity_relations_child_entity_id_fkey(name)').eq('company_id', auth.membership.companyId).eq('parent_entity_id', id).is('archived_at', null).order('created_at', { ascending: false }),
+    supabaseAdmin.from('entity_notes').select('id, note, visibility, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
+    supabaseAdmin.from('entity_documents').select('id, file_name, storage_path, document_type, status, file_size_bytes, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
+    supabaseAdmin.from('entity_relations').select('id, relation_type, child_entity_id, notes, entities!entity_relations_child_entity_id_fkey(name)').eq('company_id', auth.membership.companyId).eq('parent_entity_id', id).is('archived_at', null).order('created_at', { ascending: false }),
     supabaseAdmin.from('entities').select('id, name').eq('company_id', auth.membership.companyId).neq('id', id).is('archived_at', null).order('name').limit(100),
   ])
   if (!entity) notFound()
@@ -86,24 +90,25 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
               <input type="hidden" name="parent_entity_id" value={entity.id} />
               <Field label="Kopplat objekt"><select name="child_entity_id" required className={selectClassName}><option value="">Välj objekt</option>{relationTargets?.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select></Field>
               <Field label="Relation"><select name="relation_type" defaultValue="related" className={selectClassName}><option value="related">Relaterad</option><option value="contains">Innehåller</option><option value="belongs_to">Tillhör</option><option value="contact_for">Kontakt för</option></select></Field>
+              <Field label="Notering"><input name="notes" className={inputClassName} placeholder="Frivillig relationstext" /></Field>
               <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Lägg till relation</button>
             </form>
-            <div className="mt-4 space-y-3">{relations?.length ? relations.map((relation: any) => <div key={relation.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{relation.entities?.name ?? relation.child_entity_id}</p><p className="mt-1 text-sm text-slate-500">{relation.relation_type}</p></div>) : <p className="text-sm text-slate-600">Inga relationer registrerade.</p>}</div>
+            <div className="mt-4 space-y-3">{relations?.length ? relations.map((relation: any) => <div key={relation.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{relation.entities?.name ?? relation.child_entity_id}</p><p className="mt-1 text-sm text-slate-500">{relation.relation_type}</p>{relation.notes ? <p className="mt-2 text-sm text-slate-600">{relation.notes}</p> : null}<form action={archiveEntityRelationAction} className="mt-3"><input type="hidden" name="id" value={relation.id} /><input type="hidden" name="entity_id" value={entity.id} /><button className="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Ta bort relation</button></form></div>) : <p className="text-sm text-slate-600">Inga relationer registrerade.</p>}</div>
           </section>
 
           <section className="coordiqo-card p-5">
-            <h2 className="text-lg font-semibold text-slate-950">Dokumentmetadata</h2>
-            <form action={createEntityDocumentAction} className="mt-4 grid gap-3">
+            <h2 className="text-lg font-semibold text-slate-950">Dokument</h2>
+            <form action={uploadEntityDocumentAction} className="mt-4 grid gap-3">
               <input type="hidden" name="entity_id" value={entity.id} />
-              <Field label="Filnamn"><input name="file_name" required className={inputClassName} placeholder="avtal.pdf" /></Field>
-              <Field label="Storage path / referens"><input name="storage_path" required className={inputClassName} placeholder="company/entity/file.pdf" /></Field>
+              <Field label="Fil"><input name="file" type="file" required className={inputClassName} /></Field>
               <Field label="Dokumenttyp"><input name="document_type" className={inputClassName} placeholder="Avtal, bild, instruktion" /></Field>
-              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Lägg till dokument</button>
+              <Field label="Beskrivning"><input name="description" className={inputClassName} placeholder="Frivillig beskrivning" /></Field>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Ladda upp dokument</button>
             </form>
-            <div className="mt-4 space-y-3">{documents?.length ? documents.map((doc) => <div key={doc.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{doc.file_name}</p><p className="mt-1 text-sm text-slate-500">{doc.document_type ?? 'Dokument'} · {doc.storage_path}</p></div>) : <p className="text-sm text-slate-600">Inga dokument registrerade.</p>}</div>
+            <div className="mt-4 space-y-3">{documents?.length ? documents.map((doc) => <div key={doc.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{doc.file_name}</p><p className="mt-1 break-all text-sm text-slate-500">{doc.document_type ?? 'Dokument'} · {doc.storage_path}</p>{doc.file_size_bytes ? <p className="mt-1 text-xs text-slate-400">{Math.round(doc.file_size_bytes / 1024)} KB</p> : null}<form action={archiveEntityDocumentAction} className="mt-3"><input type="hidden" name="id" value={doc.id} /><input type="hidden" name="entity_id" value={entity.id} /><button className="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Arkivera dokument</button></form></div>) : <p className="text-sm text-slate-600">Inga dokument registrerade.</p>}</div>
           </section>
 
-          <section className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Noteringar</h2><div className="mt-4 space-y-3">{notes?.length ? notes.map((note) => <div key={note.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-sm leading-6 text-slate-700">{note.note}</p><p className="mt-2 text-xs text-slate-400">{note.visibility} · {new Date(note.created_at).toLocaleString('sv-SE')}</p></div>) : <p className="text-sm text-slate-600">Inga noteringar ännu.</p>}</div></section>
+          <section className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Noteringar</h2><div className="mt-4 space-y-3">{notes?.length ? notes.map((note) => <div key={note.id} className="rounded-2xl border border-slate-200 bg-white p-4"><form action={updateEntityNoteAction} className="grid gap-3"><input type="hidden" name="id" value={note.id} /><input type="hidden" name="entity_id" value={entity.id} /><textarea name="note" defaultValue={note.note} className={textareaClassName} /><select name="visibility" defaultValue={note.visibility} className={selectClassName}><option value="internal">Intern</option><option value="staff">Personal</option><option value="external">Extern</option></select><button className="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Spara notering</button></form><form action={archiveEntityNoteAction} className="mt-2"><input type="hidden" name="id" value={note.id} /><input type="hidden" name="entity_id" value={entity.id} /><button className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Ta bort notering</button></form><p className="mt-2 text-xs text-slate-400">{note.visibility} · {new Date(note.created_at).toLocaleString('sv-SE')}</p></div>) : <p className="text-sm text-slate-600">Inga noteringar ännu.</p>}</div></section>
         </div>
       </div>
     </AppShell>

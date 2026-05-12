@@ -9,17 +9,23 @@ export default async function PermissionsPage() {
   const auth = await requireAuth()
   if (!auth.membership) return null
 
-  const { data: auditEvents } = await supabaseAdmin
+  const [{ data: auditEvents }, { data: permissions }] = await Promise.all([
+    supabaseAdmin
     .from('audit_logs')
     .select('id, action, entity_type, entity_id, created_at')
     .eq('company_id', auth.membership.companyId)
     .order('created_at', { ascending: false })
-    .limit(8)
+    .limit(8),
+    supabaseAdmin
+      .from('company_role_permissions')
+      .select('role, permission_key, is_allowed, source')
+      .eq('company_id', auth.membership.companyId),
+  ])
 
   return (
     <AppShell auth={auth} title="Behörigheter" subtitle="Rollmatris, audit-spår och grund för organisationsstyrning.">
       <div className="space-y-5">
-        <PermissionMatrix />
+        <PermissionMatrix permissions={permissions ?? []} />
 
         <section className="coordiqo-card p-5 sm:p-6">
           <h2 className="text-xl font-semibold tracking-tight text-slate-950">Senaste audit-händelser</h2>

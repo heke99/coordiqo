@@ -118,3 +118,17 @@ textarea:focus {
   background: #eef2ff;
   color: #3730a3;
 }
+.coordiqo-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+
+.coordiqo-scrollbar::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.coordiqo-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(203 213 225);
+}

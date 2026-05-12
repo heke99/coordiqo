@@ -21,6 +21,10 @@ export type PermissionAction =
   | 'invite.manage'
   | 'permission.manage'
   | 'planning.manage'
+  | 'task.manage'
+  | 'work_order.manage'
+  | 'document.manage'
+  | 'support.manage'
   | 'audit.view'
 
 export const COMPANY_ROLE_RANK: Record<CompanyRole, number> = {
@@ -93,6 +97,26 @@ export const PERMISSION_MATRIX: Record<PermissionAction, { label: string; minimu
     minimumRole: 'planner',
     description: 'Kommande uppdrag, planering, tilldelning och dispatch.',
   },
+  'task.manage': {
+    label: 'Hantera uppdrag',
+    minimumRole: 'planner',
+    description: 'Skapa, uppdatera, arkivera och kommentera uppdrag.',
+  },
+  'work_order.manage': {
+    label: 'Hantera arbetsorder',
+    minimumRole: 'planner',
+    description: 'Skapa och styra arbetsorder och koppling till ärenden.',
+  },
+  'document.manage': {
+    label: 'Hantera dokument',
+    minimumRole: 'planner',
+    description: 'Ladda upp och arkivera dokument på objekt och uppdrag.',
+  },
+  'support.manage': {
+    label: 'Supportläge',
+    minimumRole: 'company_admin',
+    description: 'Hantera supportspår, åtkomstloggning och supportsessioner.',
+  },
   'audit.view': {
     label: 'Se audit',
     minimumRole: 'operations_manager',
@@ -135,6 +159,22 @@ export function canManageEntityTypes(role: CompanyRole | null | undefined) {
 
 export function canManageInvitations(role: CompanyRole | null | undefined) {
   return can(role, 'invite.manage')
+}
+
+export function canManageTasks(role: CompanyRole | null | undefined) {
+  return can(role, 'task.manage')
+}
+
+export function canManageWorkOrders(role: CompanyRole | null | undefined) {
+  return can(role, 'work_order.manage')
+}
+
+export function canManageDocuments(role: CompanyRole | null | undefined) {
+  return can(role, 'document.manage')
+}
+
+export function canManageSupport(role: CompanyRole | null | undefined) {
+  return can(role, 'support.manage')
 }
 
 export function canManagePermissions(role: CompanyRole | null | undefined) {

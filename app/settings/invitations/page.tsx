@@ -26,14 +26,14 @@ export default async function InvitationsPage() {
 
   const { data: invitations, error } = await supabaseAdmin
     .from('company_invitations')
-    .select('id, email, full_name, role, status, message, expires_at, created_at')
+    .select('id, email, full_name, role, status, message, token, email_delivery_status, email_sent_at, last_email_error, expires_at, created_at')
     .eq('company_id', auth.membership.companyId)
     .order('created_at', { ascending: false })
 
   return (
     <AppShell auth={auth} title="Inbjudningar" subtitle="Bjud in användare utan att skapa medlemskap innan auth-kontot finns.">
       <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-        <FormCard title="Ny inbjudan" description="Detta skapar en spårbar invite. E-postutskick och accept-länk kopplas in i nästa auth-hårdning.">
+        <FormCard title="Ny inbjudan" description="Skapar invite, köar e-post och skickar automatiskt om RESEND_API_KEY är satt. Utan provider visas länken och mejlet ligger i outbound-kön.">
           {canManage ? (
             <form action={createInvitationAction} className="grid gap-4">
               <Field label="E-post"><input name="email" type="email" required className={inputClassName} placeholder="namn@bolag.se" /></Field>
@@ -59,9 +59,14 @@ export default async function InvitationsPage() {
                     <p className="mt-1 text-sm text-slate-500">{invite.email} · {invite.role}</p>
                     <p className="mt-1 text-xs text-slate-400">Gäller till {new Date(invite.expires_at).toLocaleDateString('sv-SE')}</p>
                   </div>
-                  <StatusBadge status={invite.status} />
+                  <div className="flex flex-col items-end gap-2"><StatusBadge status={invite.status} /><StatusBadge status={invite.email_delivery_status ?? 'queued'} /></div>
                 </div>
                 {invite.message ? <p className="mt-3 text-sm leading-6 text-slate-600">{invite.message}</p> : null}
+                <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-semibold text-slate-700">Accept-länk</p>
+                  <p className="mt-1 break-all">{`${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/invite/accept?token=${invite.token}`}</p>
+                  {invite.last_email_error ? <p className="mt-2 text-red-600">{invite.last_email_error}</p> : null}
+                </div>
                 {canManage && invite.status === 'pending' ? (
                   <form action={cancelInvitationAction} className="mt-3">
                     <input type="hidden" name="id" value={invite.id} />
