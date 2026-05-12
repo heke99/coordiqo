@@ -11,6 +11,7 @@ import {
   archiveEntityDocumentAction,
   archiveEntityNoteAction,
   archiveEntityRelationAction,
+  createEntityContactAction,
   createEntityNoteAction,
   createEntityRelationAction,
   updateEntityAction,
@@ -82,7 +83,19 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
           </section>
 
           <section className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Adresser</h2><div className="mt-4 space-y-3">{addresses?.length ? addresses.map((address) => <div key={address.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{address.label}</p><p className="mt-1 text-sm text-slate-500">{[address.street, address.postal_code, address.city].filter(Boolean).join(', ')}</p></div>) : <p className="text-sm text-slate-600">Ingen adress registrerad.</p>}</div></section>
-          <section className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Kontakter</h2><div className="mt-4 space-y-3">{contacts?.length ? contacts.map((contact) => <div key={contact.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{contact.name}</p><p className="mt-1 text-sm text-slate-500">{contact.role_label ?? 'Kontakt'} · {contact.phone ?? contact.email ?? 'saknar kontaktväg'}</p></div>) : <p className="text-sm text-slate-600">Ingen kontakt registrerad.</p>}</div></section>
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Kontakter</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">För hyresvärdar används kontaktens e-post för att matcha inkommande felanmälan till rätt lägenhet, lokal eller hyresgäst.</p>
+            <form action={createEntityContactAction} className="mt-4 grid gap-3">
+              <input type="hidden" name="entity_id" value={entity.id} />
+              <Field label="Namn"><input name="name" required className={inputClassName} placeholder="Hyresgäst eller kontaktperson" /></Field>
+              <Field label="Roll"><input name="role_label" className={inputClassName} placeholder="Hyresgäst, förvaltare, anhörig" /></Field>
+              <Field label="E-post"><input name="email" type="email" className={inputClassName} placeholder="kontakt@email.se" /></Field>
+              <Field label="Telefon"><input name="phone" className={inputClassName} /></Field>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Lägg till kontakt</button>
+            </form>
+            <div className="mt-4 space-y-3">{contacts?.length ? contacts.map((contact) => <div key={contact.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{contact.name}</p><p className="mt-1 text-sm text-slate-500">{contact.role_label ?? 'Kontakt'} · {contact.phone ?? contact.email ?? 'saknar kontaktväg'}</p></div>) : <p className="text-sm text-slate-600">Ingen kontakt registrerad.</p>}</div>
+          </section>
 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Relationer</h2>

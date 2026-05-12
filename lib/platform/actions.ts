@@ -30,6 +30,13 @@ function customFieldsFromForm(formData: FormData) {
   return customFields
 }
 
+function durationMinutesFromForm(formData: FormData) {
+  const rawValue = Number(value(formData, 'duration_value') ?? value(formData, 'estimated_duration_minutes') ?? 60)
+  const unit = value(formData, 'duration_unit') ?? 'minutes'
+  const normalized = Number.isFinite(rawValue) && rawValue > 0 ? rawValue : 60
+  return Math.max(1, Math.round(unit === 'hours' ? normalized * 60 : normalized))
+}
+
 async function requireMembership(minimumRole: Parameters<typeof assertCompanyPermission>[1], label: string) {
   const auth = await requireAuth()
   if (!auth.membership) redirect('/setup')
@@ -789,7 +796,7 @@ export async function createTaskAction(formData: FormData) {
       time_window_end: value(formData, 'time_window_end'),
       scheduled_start: value(formData, 'scheduled_start'),
       scheduled_end: value(formData, 'scheduled_end'),
-      estimated_duration_minutes: Number(value(formData, 'estimated_duration_minutes') ?? 60),
+      estimated_duration_minutes: durationMinutesFromForm(formData),
       sla_due_at: value(formData, 'sla_due_at'),
       recurrence_rule: value(formData, 'recurrence_rule'),
       created_by: auth.userId,
@@ -836,7 +843,7 @@ export async function updateTaskAction(formData: FormData) {
       time_window_end: value(formData, 'time_window_end'),
       scheduled_start: value(formData, 'scheduled_start'),
       scheduled_end: value(formData, 'scheduled_end'),
-      estimated_duration_minutes: Number(value(formData, 'estimated_duration_minutes') ?? 60),
+      estimated_duration_minutes: durationMinutesFromForm(formData),
       sla_due_at: value(formData, 'sla_due_at'),
       recurrence_rule: value(formData, 'recurrence_rule'),
       updated_by: auth.userId,
@@ -1077,5 +1084,207 @@ export async function archiveEntityDocumentAction(formData: FormData) {
 
   if (error) throw new Error(error.message)
   await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_document', id, { entityId })
+  revalidatePath(`/entities/${entityId}`)
+}
+
+export async function switchActiveCompanyAction(formData: FormData) {
+  const auth = await requireAuth()
+  const membershipId = value(formData, 'membership_id')
+  if (!membershipId) throw new Error('Membership saknas.')
+
+  const { data: membership, error } = await supabaseAdmin
+    .from('company_memberships')
+    .select('id, company_id')
+    .eq('id', membershipId)
+    .eq('user_id', auth.userId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  if (!membership) throw new Error('Du har inte åtkomst till detta företag.')
+
+  await supabaseAdmin.from('company_memberships').update({ is_default: false }).eq('user_id', auth.userId)
+  const { error: updateError } = await supabaseAdmin.from('company_memberships').update({ is_default: true }).eq('id', membership.id)
+  if (updateError) throw new Error(updateError.message)
+
+  await audit(membership.company_id, auth.userId, 'switch', 'company_membership', membership.id)
+  revalidatePath('/', 'layout')
+  redirect('/dashboard')
+}
+
+export async function createCompanyWorkspaceAction(formData: FormData) {
+  const auth = await requireAuth()
+  const name = value(formData, 'name')
+  const industryType = value(formData, 'industry_type') ?? 'other'
+  const operationalModel = value(formData, 'operational_model') ?? 'case_based'
+  if (!name) throw new Error('Företagsnamn krävs.')
+
+  const slugBase = name.toLowerCase().trim().replace(/å/g, 'a').replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const slug = `${slugBase}-${Math.random().toString(36).slice(2, 7)}`
+
+  const { data: company, error } = await supabaseAdmin
+    .from('companies')
+    .insert({ name, slug, status: 'active', industry_type: industryType, operational_model: operationalModel })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+
+  await supabaseAdmin.from('company_settings').insert({
+    company_id: company.id,
+    active_modules: ['foundation', 'industry_engine', 'resources', 'entities', 'tasks', 'audit_control', 'document_storage'],
+    ui_label_set: industryType,
+  })
+
+  await supabaseAdmin.from('company_memberships').update({ is_default: false }).eq('user_id', auth.userId)
+  const { data: membership, error: membershipError } = await supabaseAdmin
+    .from('company_memberships')
+    .insert({ company_id: company.id, user_id: auth.userId, role: 'company_admin', status: 'active', is_default: true })
+    .select('id')
+    .single()
+  if (membershipError) throw new Error(membershipError.message)
+
+  const { data: team } = await supabaseAdmin
+    .from('teams')
+    .insert({ company_id: company.id, name: 'Huvudteam', status: 'active' })
+    .select('id')
+    .single()
+
+  if (team?.id) {
+    await supabaseAdmin.from('team_memberships').insert({ team_id: team.id, membership_id: membership.id, is_primary: true })
+  }
+
+  await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: company.id }).throwOnError()
+  await audit(company.id, auth.userId, 'create', 'company_workspace', company.id, { name, industryType, operationalModel })
+  revalidatePath('/', 'layout')
+  redirect('/dashboard')
+}
+
+export async function createCompanyAccessRequestAction(formData: FormData) {
+  const auth = await requireAuth()
+  const companyName = value(formData, 'company_name')
+  const message = value(formData, 'message')
+  const requestType = value(formData, 'request_type') ?? 'join_existing'
+  if (!companyName) throw new Error('Företagsnamn krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('company_access_requests')
+    .insert({ requester_user_id: auth.userId, requester_email: auth.email, company_name: companyName, request_type: requestType, message, status: 'pending' })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+
+  if (auth.membership?.companyId) {
+    await audit(auth.membership.companyId, auth.userId, 'request', 'company_access_request', data.id, { companyName, requestType })
+  }
+  revalidatePath('/settings/companies')
+}
+
+export async function createPropertyEmailChannelAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att hantera felanmälansmejl')
+  const inboundEmail = value(formData, 'inbound_email')?.toLowerCase()
+  if (!inboundEmail) throw new Error('E-postadress krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('property_email_channels')
+    .upsert({
+      company_id: auth.membership!.companyId,
+      inbound_email: inboundEmail,
+      display_name: value(formData, 'display_name') ?? 'Felanmälan',
+      status: value(formData, 'status') ?? 'active',
+      create_service_request: value(formData, 'create_service_request') !== 'false',
+      updated_by: auth.userId,
+    }, { onConflict: 'company_id,inbound_email' })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'upsert', 'property_email_channel', data.id, { inboundEmail })
+  revalidatePath('/property')
+}
+
+export async function createInboundEmailAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att registrera inkommande mejl')
+  const fromEmail = value(formData, 'from_email')?.toLowerCase()
+  const subject = value(formData, 'subject') ?? 'Felanmälan'
+  const bodyText = value(formData, 'body_text')
+  if (!fromEmail) throw new Error('Avsändarmejl krävs.')
+
+  let matchedEntityId: string | null = null
+  const { data: contacts } = await supabaseAdmin
+    .from('entity_contacts')
+    .select('id, entity_id, email, entities!inner(id, company_id, name)')
+    .ilike('email', fromEmail)
+    .limit(10)
+
+  const matched = (contacts ?? []).find((contact: any) => contact.entities?.company_id === auth.membership!.companyId)
+  if (matched?.entity_id) matchedEntityId = matched.entity_id
+
+  let serviceRequestId: string | null = null
+  const { data: serviceRequest, error: serviceError } = await supabaseAdmin
+    .from('service_requests')
+    .insert({
+      company_id: auth.membership!.companyId,
+      entity_id: matchedEntityId,
+      title: subject,
+      description: bodyText,
+      request_type: 'property_fault',
+      priority: value(formData, 'priority') ?? 'normal',
+      status: 'open',
+      source: 'email',
+      reported_by_email: fromEmail,
+      reported_by_name: value(formData, 'from_name'),
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (serviceError) throw new Error(serviceError.message)
+  serviceRequestId = serviceRequest.id
+
+  const { data, error } = await supabaseAdmin
+    .from('inbound_emails')
+    .insert({
+      company_id: auth.membership!.companyId,
+      from_email: fromEmail,
+      from_name: value(formData, 'from_name'),
+      subject,
+      body_text: bodyText,
+      matched_entity_id: matchedEntityId,
+      service_request_id: serviceRequestId,
+      status: matchedEntityId ? 'matched' : 'unmatched',
+      raw_payload: { manual: true },
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'ingest', 'inbound_email', data.id, { fromEmail, matchedEntityId, serviceRequestId })
+  revalidatePath('/property')
+  revalidatePath('/work-orders')
+}
+
+export async function createEntityContactAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa objektkontakt')
+  const entityId = value(formData, 'entity_id')
+  const name = value(formData, 'name')
+  if (!entityId || !name) throw new Error('Objekt och namn krävs.')
+
+  const { data: entity } = await supabaseAdmin.from('entities').select('id').eq('id', entityId).eq('company_id', auth.membership!.companyId).maybeSingle()
+  if (!entity) throw new Error('Objektet kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('entity_contacts')
+    .insert({
+      entity_id: entityId,
+      name,
+      role_label: value(formData, 'role_label'),
+      email: value(formData, 'email')?.toLowerCase(),
+      phone: value(formData, 'phone'),
+      is_primary: value(formData, 'is_primary') === 'true',
+      notes: value(formData, 'notes'),
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_contact', data.id, { entityId, name })
   revalidatePath(`/entities/${entityId}`)
 }

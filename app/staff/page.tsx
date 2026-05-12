@@ -21,7 +21,7 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
 
   let query = supabaseAdmin
     .from('staff_profiles')
-    .select('id, full_name, email, phone, employee_id, job_title, staff_kind, status, transport_mode, primary_team_id, teams(name)')
+    .select('id, full_name, email, phone, employee_id, job_title, staff_kind, status, transport_mode, primary_team_id')
     .eq('company_id', auth.membership.companyId)
     .is('archived_at', null)
     .order('full_name')
@@ -29,7 +29,11 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
   if (status !== 'all') query = query.eq('status', status)
   if (q) query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,employee_id.ilike.%${q}%,job_title.ilike.%${q}%`)
 
-  const { data: staff, error } = await query
+  const [{ data: staff, error }, { data: teams }] = await Promise.all([
+    query,
+    supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null),
+  ])
+  const teamById = new Map((teams ?? []).map((team) => [team.id, team.name]))
   const canManage = canManageStaff(auth.membership.companyRole)
 
   return (
@@ -64,7 +68,7 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
                   <StatusBadge status={person.status} />
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{person.job_title ?? 'Ingen titel'} · {person.transport_mode}</p>
-                <p className="mt-2 text-sm text-slate-500">{person.teams?.name ?? 'Inget primärt team'}</p>
+                <p className="mt-2 text-sm text-slate-500">{person.primary_team_id ? teamById.get(person.primary_team_id) ?? 'Okänt team' : 'Inget primärt team'}</p>
               </Link>
             ))}
           </section>

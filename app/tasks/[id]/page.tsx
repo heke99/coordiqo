@@ -32,7 +32,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     <AppShell auth={auth} title={task.title} subtitle="Uppdragsdetaljer, status, tilldelning, tidsfönster och kommentarer.">
       <div className="grid gap-5 lg:grid-cols-[1fr_0.75fr]">
         <FormCard title="Redigera uppdrag">
-          <TaskForm action={updateTaskAction} task={task} taskTypes={taskTypes ?? []} entities={entities ?? []} teams={teams ?? []} staff={staff ?? []} workOrders={workOrders ?? []} submitLabel="Spara uppdrag" />
+          <TaskForm action={updateTaskAction} task={task} taskTypes={taskTypes ?? []} entities={entities ?? []} teams={teams ?? []} staff={staff ?? []} workOrders={workOrders ?? []} submitLabel="Spara uppdrag" industryType={auth.membership.industryType} />
         </FormCard>
 
         <div className="space-y-5">

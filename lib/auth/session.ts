@@ -5,24 +5,28 @@ import type { CompanyRole, PlatformRole } from '@/lib/auth/permissions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
+export type AuthCompanyMembership = {
+  membershipId: string
+  companyId: string
+  companyName: string
+  companyRole: CompanyRole
+  companySlug: string | null
+  industryType: string | null
+  industryLabel: string
+  operationalModel: string | null
+  operationalModelLabel: string
+  activeModules: string[]
+  uiLabelSet: string | null
+  isDefault: boolean
+}
+
 export type AuthContext = {
   userId: string
   email: string | null
   profileName: string | null
   platformRole: PlatformRole
-  membership: {
-    membershipId: string
-    companyId: string
-    companyName: string
-    companyRole: CompanyRole
-    companySlug: string | null
-    industryType: string | null
-    industryLabel: string
-    operationalModel: string | null
-    operationalModelLabel: string
-    activeModules: string[]
-    uiLabelSet: string | null
-  } | null
+  membership: AuthCompanyMembership | null
+  memberships: AuthCompanyMembership[]
 }
 
 export async function requireAuth(): Promise<AuthContext> {
@@ -47,43 +51,55 @@ export async function requireAuth(): Promise<AuthContext> {
       .select('id, company_id, role, is_default, created_at')
       .eq('user_id', user.id)
       .eq('status', 'active')
+      .is('archived_at', null)
       .order('is_default', { ascending: false })
-      .order('created_at', { ascending: true })
-      .limit(5),
+      .order('created_at', { ascending: true }),
   ])
 
-  const membershipRecord = memberships?.[0] ?? null
+  const membershipRows = memberships ?? []
+  const companyIds = membershipRows.map((membership) => membership.company_id).filter(Boolean)
 
-  let companyRecord: {
-    name: string | null
-    slug: string | null
-    status: string | null
-    industry_type: string | null
-    operational_model: string | null
-  } | null = null
+  const [{ data: companies }, { data: settingsRows }] = companyIds.length
+    ? await Promise.all([
+        supabaseAdmin
+          .from('companies')
+          .select('id, name, slug, status, industry_type, operational_model')
+          .in('id', companyIds),
+        supabaseAdmin
+          .from('company_settings')
+          .select('company_id, active_modules, ui_label_set')
+          .in('company_id', companyIds),
+      ])
+    : [{ data: [] }, { data: [] }]
 
-  let settingsRecord: {
-    active_modules: string[] | null
-    ui_label_set: string | null
-  } | null = null
+  const companyById = new Map((companies ?? []).map((company: any) => [company.id, company]))
+  const settingsByCompanyId = new Map((settingsRows ?? []).map((settings: any) => [settings.company_id, settings]))
 
-  if (membershipRecord?.company_id) {
-    const [{ data: company }, { data: settings }] = await Promise.all([
-      supabaseAdmin
-        .from('companies')
-        .select('name, slug, status, industry_type, operational_model')
-        .eq('id', membershipRecord.company_id)
-        .maybeSingle(),
-      supabaseAdmin
-        .from('company_settings')
-        .select('active_modules, ui_label_set')
-        .eq('company_id', membershipRecord.company_id)
-        .maybeSingle(),
-    ])
+  const mappedMemberships = membershipRows
+    .map((membershipRecord: any) => {
+      const companyRecord = companyById.get(membershipRecord.company_id)
+      if (!companyRecord || companyRecord.status !== 'active') return null
+      const settingsRecord = settingsByCompanyId.get(membershipRecord.company_id)
 
-    companyRecord = company
-    settingsRecord = settings
-  }
+      return {
+        membershipId: membershipRecord.id,
+        companyId: membershipRecord.company_id,
+        companyName: companyRecord.name ?? 'Unknown company',
+        companySlug: companyRecord.slug ?? null,
+        companyRole: membershipRecord.role as CompanyRole,
+        industryType: companyRecord.industry_type ?? null,
+        industryLabel: getIndustryLabel(companyRecord.industry_type),
+        operationalModel: companyRecord.operational_model ?? null,
+        operationalModelLabel: getOperationalModelLabel(companyRecord.operational_model),
+        activeModules: settingsRecord?.active_modules ?? [],
+        uiLabelSet: settingsRecord?.ui_label_set ?? null,
+        isDefault: Boolean(membershipRecord.is_default),
+      }
+    })
+    .filter(Boolean) as AuthCompanyMembership[]
+
+  const membershipRecord = membershipRows[0] ?? null
+  const companyRecord = membershipRecord ? companyById.get(membershipRecord.company_id) : null
 
   if (membershipRecord && companyRecord?.status === 'inactive') {
     redirect('/login?error=inactive-company')
@@ -94,21 +110,7 @@ export async function requireAuth(): Promise<AuthContext> {
     email: user.email ?? null,
     profileName: profile?.full_name ?? null,
     platformRole: (profile?.platform_role ?? null) as PlatformRole,
-    membership:
-      membershipRecord && companyRecord
-        ? {
-            membershipId: membershipRecord.id,
-            companyId: membershipRecord.company_id,
-            companyName: companyRecord.name ?? 'Unknown company',
-            companySlug: companyRecord.slug ?? null,
-            companyRole: membershipRecord.role as CompanyRole,
-            industryType: companyRecord.industry_type ?? null,
-            industryLabel: getIndustryLabel(companyRecord.industry_type),
-            operationalModel: companyRecord.operational_model ?? null,
-            operationalModelLabel: getOperationalModelLabel(companyRecord.operational_model),
-            activeModules: settingsRecord?.active_modules ?? [],
-            uiLabelSet: settingsRecord?.ui_label_set ?? null,
-          }
-        : null,
+    membership: mappedMemberships[0] ?? null,
+    memberships: mappedMemberships,
   }
 }

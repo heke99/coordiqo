@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { switchActiveCompanyAction } from '@/lib/platform/actions'
 import type { AuthContext } from '@/lib/auth/session'
 
 const primaryNav = [
@@ -10,9 +11,11 @@ const primaryNav = [
   { href: '/entities', label: 'Objekt', description: 'Branschstyrda objekt' },
   { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och arbetsorder' },
   { href: '/work-orders', label: 'Arbetsorder', description: 'Samlad arbetsorderstyrning' },
+  { href: '/property', label: 'Fastighet', description: 'Hyresvärd, objekt och felanmälan' },
 ]
 
 const settingsNav = [
+  { href: '/settings/companies', label: 'Företag & miljöer' },
   { href: '/settings/industry', label: 'Branschmotor' },
   { href: '/settings/entity-types', label: 'Objekttyper' },
   { href: '/settings/invitations', label: 'Inbjudningar' },
@@ -58,6 +61,29 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
             <p className="mt-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
               {role}
             </p>
+
+            {auth.memberships.length > 1 ? (
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Byt företag</p>
+                <div className="mt-2 space-y-2">
+                  {auth.memberships.map((membership) => (
+                    <form key={membership.membershipId} action={switchActiveCompanyAction}>
+                      <input type="hidden" name="membership_id" value={membership.membershipId} />
+                      <button
+                        className={`w-full rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition ${
+                          membership.companyId === auth.membership?.companyId
+                            ? 'border-slate-950 bg-white text-slate-950'
+                            : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white hover:text-slate-950'
+                        }`}
+                      >
+                        <span className="block truncate">{membership.companyName}</span>
+                        <span className="mt-0.5 block truncate font-normal text-slate-500">{membership.industryLabel}</span>
+                      </button>
+                    </form>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <nav className="mt-6 space-y-1">
@@ -120,6 +146,18 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
               </Link>
             ))}
           </nav>
+          {auth.memberships.length > 1 ? (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1 coordiqo-scrollbar">
+              {auth.memberships.map((membership) => (
+                <form key={membership.membershipId} action={switchActiveCompanyAction} className="shrink-0">
+                  <input type="hidden" name="membership_id" value={membership.membershipId} />
+                  <button className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                    {membership.companyName}
+                  </button>
+                </form>
+              ))}
+            </div>
+          ) : null}
           <form action="/api/logout" method="post" className="mt-2">
             <button className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Logga ut</button>
           </form>

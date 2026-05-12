@@ -7,6 +7,11 @@ import { requireAuth } from '@/lib/auth/session'
 
 const settingsAreas = [
   {
+    href: '/settings/companies',
+    title: 'Företag & miljöer',
+    description: 'Hantera flera företag under samma användare, byt aktiv miljö och begär åtkomst.',
+  },
+  {
     href: '/settings/industry',
     title: 'Branschmotor',
     description: 'Bransch, operativ modell, moduler och branschstyrd navigation.',
