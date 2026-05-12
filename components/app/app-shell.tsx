@@ -10,6 +10,7 @@ const primaryNav = [
   { href: '/resources', label: 'Resurser', description: 'Fordon, utrustning och nycklar' },
   { href: '/entities', label: 'Objekt', description: 'Branschstyrda objekt' },
   { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och arbetsorder' },
+  { href: '/settings/skills', label: 'Kompetenser', description: 'Certifikat och regelmotor' },
   { href: '/work-orders', label: 'Arbetsorder', description: 'Samlad arbetsorderstyrning' },
   { href: '/property', label: 'Fastighet', description: 'Hyresvärd, objekt och felanmälan' },
 ]

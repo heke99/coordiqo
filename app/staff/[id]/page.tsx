@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { archiveStaffAction, updateStaffAction } from '@/lib/platform/actions'
+import { archiveStaffAction, assignStaffCertificationAction, assignStaffSkillAction, removeStaffCertificationAction, removeStaffSkillAction, updateStaffAction } from '@/lib/platform/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -14,10 +14,14 @@ export default async function StaffDetailPage({ params }: { params: Promise<{ id
   if (!auth.membership) return null
   const { id } = await params
 
-  const [{ data: person }, { data: teams }, { data: resources }] = await Promise.all([
+  const [{ data: person }, { data: teams }, { data: resources }, { data: skills }, { data: certifications }, { data: staffSkills }, { data: staffCertifications }] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('*').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
     supabaseAdmin.from('resource_assets').select('id, name, status').eq('company_id', auth.membership.companyId).eq('assigned_staff_id', id).is('archived_at', null).order('name'),
+    supabaseAdmin.from('skills').select('id, name, category').eq('company_id', auth.membership.companyId).eq('is_active', true).is('archived_at', null).order('name'),
+    supabaseAdmin.from('certifications').select('id, name, category, requires_expiry').eq('company_id', auth.membership.companyId).eq('is_active', true).is('archived_at', null).order('name'),
+    supabaseAdmin.from('staff_skills').select('id, skill_id, level, notes, skills(name, category)').eq('company_id', auth.membership.companyId).eq('staff_profile_id', id).is('archived_at', null).order('created_at', { ascending: false }),
+    supabaseAdmin.from('staff_certifications').select('id, certification_id, status, certificate_number, expires_at, certifications(name, category)').eq('company_id', auth.membership.companyId).eq('staff_profile_id', id).is('archived_at', null).order('created_at', { ascending: false }),
   ])
 
   if (!person) notFound()
@@ -47,6 +51,40 @@ export default async function StaffDetailPage({ params }: { params: Promise<{ id
 
         <div className="space-y-5">
           <section className="coordiqo-card p-5"><div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-950">Status</h2><StatusBadge status={person.status} /></div><p className="mt-3 text-sm leading-6 text-slate-600">Arkivering är soft delete. Personens historik bevaras inför senare planerings- och auditflöden.</p><form action={archiveStaffAction} className="mt-4"><input type="hidden" name="id" value={person.id} /><button className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Arkivera personal</button></form></section>
+          
+          <FormCard title="Lägg till kompetens">
+            <form action={assignStaffSkillAction} className="grid gap-4">
+              <input type="hidden" name="staff_profile_id" value={person.id} />
+              <Field label="Kompetens"><select name="skill_id" required className={selectClassName}><option value="">Välj kompetens</option>{skills?.map((skill: any) => <option key={skill.id} value={skill.id}>{skill.name} · {skill.category}</option>)}</select></Field>
+              <Field label="Nivå"><select name="level" defaultValue="qualified" className={selectClassName}><option value="basic">Grund</option><option value="qualified">Behörig</option><option value="expert">Expert</option></select></Field>
+              <Field label="Notering"><textarea name="notes" className={textareaClassName} /></Field>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Lägg till kompetens</button>
+            </form>
+          </FormCard>
+
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Kompetenser</h2>
+            <div className="mt-4 space-y-3">{staffSkills?.length ? staffSkills.map((row: any) => <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{row.skills?.name ?? 'Kompetens'}</p><p className="mt-1 text-sm text-slate-500">{row.level}</p></div><form action={removeStaffSkillAction}><input type="hidden" name="id" value={row.id} /><input type="hidden" name="staff_profile_id" value={person.id} /><button className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Ta bort</button></form></div></div>) : <p className="text-sm text-slate-600">Inga kompetenser kopplade ännu.</p>}</div>
+          </section>
+
+          <FormCard title="Lägg till certifikat">
+            <form action={assignStaffCertificationAction} className="grid gap-4">
+              <input type="hidden" name="staff_profile_id" value={person.id} />
+              <Field label="Certifikat"><select name="certification_id" required className={selectClassName}><option value="">Välj certifikat</option>{certifications?.map((cert: any) => <option key={cert.id} value={cert.id}>{cert.name} · {cert.category}</option>)}</select></Field>
+              <Field label="Status"><select name="status" defaultValue="valid" className={selectClassName}><option value="valid">Giltigt</option><option value="pending">Väntar</option><option value="expired">Utgånget</option><option value="revoked">Spärrat</option></select></Field>
+              <Field label="Certifikatnummer"><input name="certificate_number" className={inputClassName} /></Field>
+              <Field label="Utfärdat"><input name="issued_at" type="date" className={inputClassName} /></Field>
+              <Field label="Gäller till"><input name="expires_at" type="date" className={inputClassName} /></Field>
+              <Field label="Notering"><textarea name="notes" className={textareaClassName} /></Field>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Lägg till certifikat</button>
+            </form>
+          </FormCard>
+
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Certifikat</h2>
+            <div className="mt-4 space-y-3">{staffCertifications?.length ? staffCertifications.map((row: any) => <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{row.certifications?.name ?? 'Certifikat'}</p><p className="mt-1 text-sm text-slate-500">{row.status}{row.expires_at ? ` · gäller till ${row.expires_at}` : ''}</p></div><form action={removeStaffCertificationAction}><input type="hidden" name="id" value={row.id} /><input type="hidden" name="staff_profile_id" value={person.id} /><button className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Ta bort</button></form></div></div>) : <p className="text-sm text-slate-600">Inga certifikat kopplade ännu.</p>}</div>
+          </section>
+
           <section className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Tilldelade resurser</h2><div className="mt-4 space-y-3">{resources?.length ? resources.map((resource) => <div key={resource.id} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="font-semibold text-slate-950">{resource.name}</p><p className="mt-1 text-sm text-slate-500">{resource.status}</p></div>) : <p className="text-sm text-slate-600">Inga resurser är kopplade till personen ännu.</p>}</div></section>
         </div>
       </div>

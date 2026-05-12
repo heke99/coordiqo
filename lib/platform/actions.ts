@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
+import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function value(formData: FormData, key: string) {
@@ -1085,6 +1086,220 @@ export async function archiveEntityDocumentAction(formData: FormData) {
   if (error) throw new Error(error.message)
   await audit(auth.membership!.companyId, auth.userId, 'archive', 'entity_document', id, { entityId })
   revalidatePath(`/entities/${entityId}`)
+}
+
+
+export async function createSkillAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skapa kompetenser')
+  const name = value(formData, 'name')
+  const code = value(formData, 'code')?.toLowerCase().replace(/[^a-z0-9_\-]/g, '_')
+  if (!name) throw new Error('Kompetensnamn krävs.')
+  if (!code) throw new Error('Kompetenskod krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('skills')
+    .insert({
+      company_id: auth.membership!.companyId,
+      code,
+      name,
+      category: value(formData, 'category') ?? 'general',
+      description: value(formData, 'description'),
+      is_active: value(formData, 'is_active') !== 'false',
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'skill', data.id, { code, name })
+  revalidatePath('/settings/skills')
+}
+
+export async function archiveSkillAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att arkivera kompetenser')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Kompetens-id saknas.')
+  const { error } = await supabaseAdmin.from('skills').update({ is_active: false, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'skill', id)
+  revalidatePath('/settings/skills')
+}
+
+export async function createCertificationAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skapa certifikat')
+  const name = value(formData, 'name')
+  const code = value(formData, 'code')?.toLowerCase().replace(/[^a-z0-9_\-]/g, '_')
+  if (!name) throw new Error('Certifikatnamn krävs.')
+  if (!code) throw new Error('Certifikatkod krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('certifications')
+    .insert({
+      company_id: auth.membership!.companyId,
+      code,
+      name,
+      category: value(formData, 'category') ?? 'general',
+      description: value(formData, 'description'),
+      requires_expiry: value(formData, 'requires_expiry') !== 'false',
+      is_active: value(formData, 'is_active') !== 'false',
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'certification', data.id, { code, name })
+  revalidatePath('/settings/skills')
+}
+
+export async function archiveCertificationAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att arkivera certifikat')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Certifikat-id saknas.')
+  const { error } = await supabaseAdmin.from('certifications').update({ is_active: false, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'certification', id)
+  revalidatePath('/settings/skills')
+}
+
+export async function assignStaffSkillAction(formData: FormData) {
+  const auth = await requireMembership('supervisor', 'att tilldela kompetenser')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const skillId = value(formData, 'skill_id')
+  if (!staffProfileId || !skillId) throw new Error('Personal och kompetens krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('staff_skills')
+    .upsert({
+      company_id: auth.membership!.companyId,
+      staff_profile_id: staffProfileId,
+      skill_id: skillId,
+      level: value(formData, 'level') ?? 'qualified',
+      notes: value(formData, 'notes'),
+      verified_by: auth.userId,
+      verified_at: new Date().toISOString(),
+      archived_at: null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'staff_profile_id,skill_id' })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'assign', 'staff_skill', data.id, { staffProfileId, skillId })
+  revalidatePath(`/staff/${staffProfileId}`)
+}
+
+export async function removeStaffSkillAction(formData: FormData) {
+  const auth = await requireMembership('supervisor', 'att ta bort kompetenser')
+  const id = value(formData, 'id')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  if (!id || !staffProfileId) throw new Error('Kompetensrad saknas.')
+  const { error } = await supabaseAdmin.from('staff_skills').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'staff_skill', id, { staffProfileId })
+  revalidatePath(`/staff/${staffProfileId}`)
+}
+
+export async function assignStaffCertificationAction(formData: FormData) {
+  const auth = await requireMembership('supervisor', 'att tilldela certifikat')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const certificationId = value(formData, 'certification_id')
+  if (!staffProfileId || !certificationId) throw new Error('Personal och certifikat krävs.')
+
+  const { data, error } = await supabaseAdmin
+    .from('staff_certifications')
+    .upsert({
+      company_id: auth.membership!.companyId,
+      staff_profile_id: staffProfileId,
+      certification_id: certificationId,
+      certificate_number: value(formData, 'certificate_number'),
+      status: value(formData, 'status') ?? 'valid',
+      issued_at: value(formData, 'issued_at'),
+      expires_at: value(formData, 'expires_at'),
+      notes: value(formData, 'notes'),
+      verified_by: auth.userId,
+      verified_at: new Date().toISOString(),
+      archived_at: null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'staff_profile_id,certification_id' })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'assign', 'staff_certification', data.id, { staffProfileId, certificationId })
+  revalidatePath(`/staff/${staffProfileId}`)
+}
+
+export async function removeStaffCertificationAction(formData: FormData) {
+  const auth = await requireMembership('supervisor', 'att ta bort certifikat')
+  const id = value(formData, 'id')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  if (!id || !staffProfileId) throw new Error('Certifikatrad saknas.')
+  const { error } = await supabaseAdmin.from('staff_certifications').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'staff_certification', id, { staffProfileId })
+  revalidatePath(`/staff/${staffProfileId}`)
+}
+
+export async function createTaskRequirementAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa uppdragskrav')
+  const taskId = value(formData, 'task_id')
+  const kind = value(formData, 'requirement_kind') ?? 'skill'
+  if (!taskId) throw new Error('Uppdrag saknas.')
+
+  const { data: task } = await supabaseAdmin.from('tasks').select('id').eq('id', taskId).eq('company_id', auth.membership!.companyId).maybeSingle()
+  if (!task) throw new Error('Uppdraget kunde inte hittas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('task_requirements')
+    .insert({
+      company_id: auth.membership!.companyId,
+      task_id: taskId,
+      requirement_kind: kind,
+      skill_id: kind === 'skill' ? value(formData, 'skill_id') : null,
+      certification_id: kind === 'certification' ? value(formData, 'certification_id') : null,
+      required_value: value(formData, 'required_value'),
+      minimum_level: value(formData, 'minimum_level'),
+      is_hard_requirement: value(formData, 'is_hard_requirement') !== 'false',
+      description: value(formData, 'description'),
+      created_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'task_requirement', data.id, { taskId, kind })
+  revalidatePath(`/tasks/${taskId}`)
+}
+
+export async function archiveTaskRequirementAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera uppdragskrav')
+  const id = value(formData, 'id')
+  const taskId = value(formData, 'task_id')
+  if (!id || !taskId) throw new Error('Krav-id saknas.')
+  const { error } = await supabaseAdmin.from('task_requirements').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'task_requirement', id, { taskId })
+  revalidatePath(`/tasks/${taskId}`)
+}
+
+export async function runTaskRuleCheckAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att köra regelkontroll')
+  const taskId = value(formData, 'task_id')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  if (!taskId || !staffProfileId) throw new Error('Uppdrag och personal krävs för regelkontroll.')
+  const result = await evaluateTaskAssignment({ companyId: auth.membership!.companyId, taskId, staffProfileId, actorUserId: auth.userId })
+  await audit(auth.membership!.companyId, auth.userId, 'evaluate', 'task_assignment_rules', taskId, { staffProfileId, hardBlockers: result.hardBlockers, softWarnings: result.softWarnings })
+  revalidatePath(`/tasks/${taskId}`)
+}
+
+export async function resolveRuleViolationAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att lösa regelbrott')
+  const id = value(formData, 'id')
+  const taskId = value(formData, 'task_id')
+  if (!id || !taskId) throw new Error('Regelbrott saknar id.')
+  const { error } = await supabaseAdmin.from('rule_violations').update({ status: 'resolved', resolved_by: auth.userId, resolved_at: new Date().toISOString() }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'resolve', 'rule_violation', id, { taskId })
+  revalidatePath(`/tasks/${taskId}`)
 }
 
 export async function switchActiveCompanyAction(formData: FormData) {
