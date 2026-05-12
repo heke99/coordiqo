@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
@@ -30,7 +29,7 @@ export default function LoginPage() {
   const urlError = searchParams.get('error')
   const authMessage = useMemo(() => {
     if (urlError === 'no-membership') {
-      return 'Du är inloggad, men saknar aktiv företagstillhörighet. Slutför onboarding först.'
+      return 'Du är inloggad, men saknar aktiv företagstillhörighet. Fortsätt med onboarding för att komma vidare.'
     }
 
     if (urlError === 'inactive-company') {
@@ -97,33 +96,33 @@ export default function LoginPage() {
           <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-br from-indigo-500/10 via-transparent to-transparent" />
           <div className="relative flex h-full flex-col justify-between gap-8">
             <div className="space-y-5">
-              <div className="coordiqo-badge coordiqo-badge--success">Coordiqo • Batch 1B</div>
+              <div className="coordiqo-badge coordiqo-badge--success">Coordiqo</div>
               <div className="space-y-4">
                 <h1 className="max-w-xl text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                  Byggt för planering, drift och fältteam från dag ett.
+                  En modern plattform för drift, planering och fältteam.
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-                  Coordiqo är grunden för en multi-tenant operationsplattform där företag får sitt eget
-                  läge, sin egen data och en enklare vardag för både admin och personal.
+                  Coordiqo är byggt för företag som behöver tydlig kontroll över personal, uppdrag, team,
+                  platser och operativ planering utan att systemet känns tungt eller rörigt.
                 </p>
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                <p className="text-sm font-semibold text-slate-900">Det här ingår i grunden</p>
+                <p className="text-sm font-semibold text-slate-900">Från start</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  <li>• Multi-tenant med företagsisolering</li>
-                  <li>• Roller, team och onboarding</li>
-                  <li>• Mobilvänlig grund från start</li>
+                  <li>• Företagsisolering och roller</li>
+                  <li>• Mobilvänlig struktur</li>
+                  <li>• Tydlig onboarding</li>
                 </ul>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                <p className="text-sm font-semibold text-slate-900">Nästa steg efter login</p>
+                <p className="text-sm font-semibold text-slate-900">Byggt för att växa</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  <li>• Skapa första företag</li>
-                  <li>• Välj bransch och driftmodell</li>
-                  <li>• Fortsätt till dashboard</li>
+                  <li>• Hemtjänst, fastighet, service och mer</li>
+                  <li>• Teams, entities och uppdrag</li>
+                  <li>• Planering och AI ovanpå en stark kärna</li>
                 </ul>
               </div>
             </div>
@@ -222,32 +221,11 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading
-                ? mode === 'signin'
-                  ? 'Loggar in...'
-                  : 'Skapar konto...'
-                : mode === 'signin'
-                  ? 'Logga in'
-                  : 'Skapa konto'}
+              {loading ? 'Arbetar...' : mode === 'signin' ? 'Logga in' : 'Skapa konto'}
             </button>
           </form>
-
-          <div className="mt-6 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            <p className="font-medium text-slate-800">Bra att veta</p>
-            <p>
-              För att komma hela vägen behöver du efter registrering skapa ditt första företag och välja
-              bransch i onboarding-steget.
-            </p>
-            <p>
-              Om e-postbekräftelse är aktiverad i Supabase behöver du först bekräfta mejlet och sedan logga
-              in igen.
-            </p>
-            <Link href="/" className="inline-flex font-medium text-indigo-600 hover:text-indigo-500">
-              Till startsidan
-            </Link>
-          </div>
         </section>
       </div>
     </main>
