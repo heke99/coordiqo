@@ -1523,3 +1523,447 @@ export async function createEntityContactAction(formData: FormData) {
   await audit(auth.membership!.companyId, auth.userId, 'create', 'entity_contact', data.id, { entityId, name })
   revalidatePath(`/entities/${entityId}`)
 }
+
+function combineDateTime(date: string | null, time: string | null) {
+  if (!date || !time) return null
+  return `${date}T${time}:00`
+}
+
+function minutesBetween(startIso: string, endIso: string) {
+  const diff = new Date(endIso).getTime() - new Date(startIso).getTime()
+  return Number.isFinite(diff) ? Math.max(0, Math.round(diff / 60000)) : 0
+}
+
+function computeCapacity(startIso: string, endIso: string, breakMinutes: number, bufferMinutes: number) {
+  const total = minutesBetween(startIso, endIso)
+  const capacity = Math.max(0, total - Math.max(0, breakMinutes) - Math.max(0, bufferMinutes))
+  return { total, capacity, remaining: capacity }
+}
+
+async function refreshAvailabilityConflicts(companyId: string, actorUserId: string, staffProfileId?: string | null, teamId?: string | null) {
+  let shiftQuery = supabaseAdmin
+    .from('shifts')
+    .select('id, staff_profile_id, team_id, starts_at, ends_at, shift_date, title')
+    .eq('company_id', companyId)
+    .is('archived_at', null)
+    .limit(250)
+
+  if (staffProfileId) shiftQuery = shiftQuery.eq('staff_profile_id', staffProfileId)
+  if (teamId) shiftQuery = shiftQuery.eq('team_id', teamId)
+
+  const { data: shifts } = await shiftQuery
+  const openShiftIds = (shifts ?? []).map((shift: any) => shift.id)
+
+  if (openShiftIds.length) {
+    await supabaseAdmin
+      .from('availability_conflicts')
+      .update({ archived_at: new Date().toISOString(), status: 'superseded' })
+      .eq('company_id', companyId)
+      .in('shift_id', openShiftIds)
+      .is('archived_at', null)
+  }
+
+  for (const shift of shifts ?? []) {
+    const issues: Array<{ type: string; severity: string; message: string; details?: Record<string, unknown> }> = []
+    if (!shift.staff_profile_id && !shift.team_id) issues.push({ type: 'missing_target', severity: 'warning', message: 'Passet saknar både personal och team.' })
+
+    if (shift.staff_profile_id) {
+      const { data: absences } = await supabaseAdmin
+        .from('absences')
+        .select('id, starts_at, ends_at, reason')
+        .eq('company_id', companyId)
+        .eq('staff_profile_id', shift.staff_profile_id)
+        .eq('affects_planning', true)
+        .is('archived_at', null)
+        .lt('starts_at', shift.ends_at)
+        .gt('ends_at', shift.starts_at)
+        .limit(10)
+      if (absences?.length) issues.push({ type: 'absence_overlap', severity: 'critical', message: 'Personalens frånvaro överlappar passet.', details: { absenceIds: absences.map((a: any) => a.id) } })
+
+      const { data: overlaps } = await supabaseAdmin
+        .from('shifts')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('staff_profile_id', shift.staff_profile_id)
+        .is('archived_at', null)
+        .neq('id', shift.id)
+        .lt('starts_at', shift.ends_at)
+        .gt('ends_at', shift.starts_at)
+        .limit(10)
+      if (overlaps?.length) issues.push({ type: 'shift_overlap', severity: 'critical', message: 'Personalen har överlappande pass.', details: { shiftIds: overlaps.map((s: any) => s.id) } })
+    }
+
+    for (const issue of issues) {
+      await supabaseAdmin.from('availability_conflicts').insert({
+        company_id: companyId,
+        conflict_type: issue.type,
+        severity: issue.severity,
+        staff_profile_id: shift.staff_profile_id,
+        team_id: shift.team_id,
+        shift_id: shift.id,
+        message: issue.message,
+        details: issue.details ?? {},
+      })
+    }
+  }
+
+  await audit(companyId, actorUserId, 'refresh', 'availability_conflicts', null, { staffProfileId, teamId })
+}
+
+export async function createShiftAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa pass')
+  const date = value(formData, 'shift_date')
+  const startsAt = combineDateTime(date, value(formData, 'start_time'))
+  const endsAt = combineDateTime(date, value(formData, 'end_time'))
+  if (!date || !startsAt || !endsAt) throw new Error('Datum, starttid och sluttid krävs.')
+  if (new Date(endsAt) <= new Date(startsAt)) throw new Error('Sluttid måste vara efter starttid.')
+  const breakMinutes = Number(value(formData, 'break_minutes') ?? 0)
+  const bufferMinutes = Number(value(formData, 'buffer_minutes') ?? 0)
+  const plannedMinutes = Number(value(formData, 'planned_minutes') ?? 0)
+  const cap = computeCapacity(startsAt, endsAt, breakMinutes, bufferMinutes)
+
+  const { data, error } = await supabaseAdmin.from('shifts').insert({
+    company_id: auth.membership!.companyId,
+    staff_profile_id: value(formData, 'staff_profile_id'),
+    team_id: value(formData, 'team_id'),
+    title: value(formData, 'title'),
+    shift_date: date,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    status: value(formData, 'status') ?? 'planned',
+    role_label: value(formData, 'role_label'),
+    transport_mode: value(formData, 'transport_mode') ?? 'car',
+    start_location_type: value(formData, 'start_location_type') ?? 'company_base',
+    start_address_text: value(formData, 'start_address_text'),
+    end_location_type: value(formData, 'end_location_type') ?? 'company_base',
+    end_address_text: value(formData, 'end_address_text'),
+    total_minutes: cap.total,
+    break_minutes: breakMinutes,
+    buffer_minutes: bufferMinutes,
+    capacity_minutes: cap.capacity,
+    planned_minutes: plannedMinutes,
+    remaining_minutes: Math.max(0, cap.capacity - plannedMinutes),
+    planning_locked: value(formData, 'planning_locked') === 'true',
+    locked_reason: value(formData, 'locked_reason'),
+    locked_by: value(formData, 'planning_locked') === 'true' ? auth.userId : null,
+    locked_at: value(formData, 'planning_locked') === 'true' ? new Date().toISOString() : null,
+    notes: value(formData, 'notes'),
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  }).select('id').single()
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'shift', data.id)
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, value(formData, 'staff_profile_id'), value(formData, 'team_id'))
+  revalidatePath('/schedule')
+  redirect(`/schedule/${data.id}`)
+}
+
+export async function updateShiftAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att uppdatera pass')
+  const id = value(formData, 'id')
+  const date = value(formData, 'shift_date')
+  const startsAt = combineDateTime(date, value(formData, 'start_time'))
+  const endsAt = combineDateTime(date, value(formData, 'end_time'))
+  if (!id || !date || !startsAt || !endsAt) throw new Error('Pass-id, datum, starttid och sluttid krävs.')
+  const breakMinutes = Number(value(formData, 'break_minutes') ?? 0)
+  const bufferMinutes = Number(value(formData, 'buffer_minutes') ?? 0)
+  const plannedMinutes = Number(value(formData, 'planned_minutes') ?? 0)
+  const cap = computeCapacity(startsAt, endsAt, breakMinutes, bufferMinutes)
+  const { error } = await supabaseAdmin.from('shifts').update({
+    staff_profile_id: value(formData, 'staff_profile_id'),
+    team_id: value(formData, 'team_id'),
+    title: value(formData, 'title'),
+    shift_date: date,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    status: value(formData, 'status') ?? 'planned',
+    role_label: value(formData, 'role_label'),
+    transport_mode: value(formData, 'transport_mode') ?? 'car',
+    start_location_type: value(formData, 'start_location_type') ?? 'company_base',
+    start_address_text: value(formData, 'start_address_text'),
+    end_location_type: value(formData, 'end_location_type') ?? 'company_base',
+    end_address_text: value(formData, 'end_address_text'),
+    total_minutes: cap.total,
+    break_minutes: breakMinutes,
+    buffer_minutes: bufferMinutes,
+    capacity_minutes: cap.capacity,
+    planned_minutes: plannedMinutes,
+    remaining_minutes: Math.max(0, cap.capacity - plannedMinutes),
+    planning_locked: value(formData, 'planning_locked') === 'true',
+    locked_reason: value(formData, 'locked_reason'),
+    locked_by: value(formData, 'planning_locked') === 'true' ? auth.userId : null,
+    locked_at: value(formData, 'planning_locked') === 'true' ? new Date().toISOString() : null,
+    notes: value(formData, 'notes'),
+    updated_by: auth.userId,
+  }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'shift', id)
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, value(formData, 'staff_profile_id'), value(formData, 'team_id'))
+  revalidatePath('/schedule')
+  revalidatePath(`/schedule/${id}`)
+}
+
+export async function archiveShiftAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera pass')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Pass-id saknas.')
+  const { error } = await supabaseAdmin.from('shifts').update({ archived_at: new Date().toISOString(), status: 'archived', updated_by: auth.userId }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'shift', id)
+  revalidatePath('/schedule')
+  redirect('/schedule')
+}
+
+export async function createAbsenceAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa frånvaro')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const startsAt = value(formData, 'starts_at')
+  const endsAt = value(formData, 'ends_at')
+  if (!staffProfileId || !startsAt || !endsAt) throw new Error('Personal, start och slut krävs.')
+  const { data, error } = await supabaseAdmin.from('absences').insert({
+    company_id: auth.membership!.companyId,
+    staff_profile_id: staffProfileId,
+    absence_type_id: value(formData, 'absence_type_id'),
+    starts_at: startsAt,
+    ends_at: endsAt,
+    is_all_day: value(formData, 'is_all_day') === 'true',
+    status: value(formData, 'status') ?? 'approved',
+    affects_planning: value(formData, 'affects_planning') !== 'false',
+    reason: value(formData, 'reason'),
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  }).select('id').single()
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'absence', data.id, { staffProfileId })
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, staffProfileId, null)
+  revalidatePath('/absences')
+  redirect(`/absences/${data.id}`)
+}
+
+export async function updateAbsenceAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att uppdatera frånvaro')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Frånvaro-id saknas.')
+  const { data: existing } = await supabaseAdmin.from('absences').select('staff_profile_id').eq('id', id).eq('company_id', auth.membership!.companyId).maybeSingle()
+  const { error } = await supabaseAdmin.from('absences').update({
+    staff_profile_id: value(formData, 'staff_profile_id'),
+    absence_type_id: value(formData, 'absence_type_id'),
+    starts_at: value(formData, 'starts_at'),
+    ends_at: value(formData, 'ends_at'),
+    is_all_day: value(formData, 'is_all_day') === 'true',
+    status: value(formData, 'status') ?? 'approved',
+    affects_planning: value(formData, 'affects_planning') !== 'false',
+    reason: value(formData, 'reason'),
+    updated_by: auth.userId,
+  }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'absence', id)
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, value(formData, 'staff_profile_id') ?? (existing as any)?.staff_profile_id, null)
+  revalidatePath('/absences')
+  revalidatePath(`/absences/${id}`)
+}
+
+export async function archiveAbsenceAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera frånvaro')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Frånvaro-id saknas.')
+  const { error } = await supabaseAdmin.from('absences').update({ archived_at: new Date().toISOString(), status: 'cancelled', updated_by: auth.userId }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'absence', id)
+  revalidatePath('/absences')
+  redirect('/absences')
+}
+
+export async function createAvailabilityBlockAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa tillgänglighetsblock')
+  const startsAt = value(formData, 'starts_at')
+  const endsAt = value(formData, 'ends_at')
+  if (!startsAt || !endsAt) throw new Error('Start och slut krävs.')
+  const { error } = await supabaseAdmin.from('availability_blocks').insert({
+    company_id: auth.membership!.companyId,
+    staff_profile_id: value(formData, 'staff_profile_id'),
+    team_id: value(formData, 'team_id'),
+    starts_at: startsAt,
+    ends_at: endsAt,
+    block_type: value(formData, 'block_type') ?? 'unavailable',
+    rule_type: value(formData, 'rule_type') ?? 'time',
+    affects_planning: value(formData, 'affects_planning') !== 'false',
+    notes: value(formData, 'notes'),
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  })
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'availability_block', null)
+  revalidatePath('/availability')
+}
+
+export async function createAvailabilityTemplateAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa tillgänglighetsmall')
+  const name = value(formData, 'name')
+  const targetType = value(formData, 'target_type') ?? 'staff'
+  if (!name) throw new Error('Mallnamn krävs.')
+  const { data, error } = await supabaseAdmin.from('availability_templates').insert({
+    company_id: auth.membership!.companyId,
+    name,
+    description: value(formData, 'description'),
+    target_type: targetType,
+    industry_code: auth.membership?.industryType ?? null,
+    status: value(formData, 'status') ?? 'active',
+    valid_from: value(formData, 'valid_from'),
+    valid_to: value(formData, 'valid_to'),
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  }).select('id').single()
+  if (error) throw new Error(error.message)
+
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const teamId = value(formData, 'team_id')
+  if (staffProfileId || teamId) {
+    const { error: targetError } = await supabaseAdmin.from('availability_template_targets').insert({
+      company_id: auth.membership!.companyId,
+      template_id: data.id,
+      target_type: staffProfileId ? 'staff' : 'team',
+      staff_profile_id: staffProfileId,
+      team_id: teamId,
+    })
+    if (targetError) throw new Error(targetError.message)
+  }
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'availability_template', data.id, { name, targetType })
+  revalidatePath('/availability/templates')
+  redirect(`/availability/templates/${data.id}`)
+}
+
+export async function addAvailabilityTemplateItemAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att lägga till mallrad')
+  const templateId = value(formData, 'template_id')
+  if (!templateId) throw new Error('Mall-id saknas.')
+  const { data: template } = await supabaseAdmin.from('availability_templates').select('id').eq('id', templateId).eq('company_id', auth.membership!.companyId).maybeSingle()
+  if (!template) throw new Error('Mallen kunde inte hittas.')
+  const start = value(formData, 'start_time')
+  const end = value(formData, 'end_time')
+  if (!start || !end) throw new Error('Start- och sluttid krävs.')
+  const { error } = await supabaseAdmin.from('availability_template_items').insert({
+    company_id: auth.membership!.companyId,
+    template_id: templateId,
+    weekday: Number(value(formData, 'weekday') ?? 1),
+    title: value(formData, 'title'),
+    start_time: start,
+    end_time: end,
+    break_minutes: Number(value(formData, 'break_minutes') ?? 0),
+    buffer_minutes: Number(value(formData, 'buffer_minutes') ?? 0),
+    capacity_minutes: value(formData, 'capacity_minutes') ? Number(value(formData, 'capacity_minutes')) : null,
+    role_label: value(formData, 'role_label'),
+    transport_mode: value(formData, 'transport_mode') ?? 'car',
+    start_location_type: value(formData, 'start_location_type') ?? 'company_base',
+    start_address_text: value(formData, 'start_address_text'),
+    end_location_type: value(formData, 'end_location_type') ?? 'company_base',
+    end_address_text: value(formData, 'end_address_text'),
+    min_staff: value(formData, 'min_staff') ? Number(value(formData, 'min_staff')) : null,
+    max_staff: value(formData, 'max_staff') ? Number(value(formData, 'max_staff')) : null,
+    notes: value(formData, 'notes'),
+  })
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'availability_template_item', templateId)
+  revalidatePath(`/availability/templates/${templateId}`)
+}
+
+export async function applyAvailabilityTemplateAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att applicera tillgänglighetsmall')
+  const templateId = value(formData, 'template_id')
+  const fromDate = value(formData, 'applied_from')
+  const toDate = value(formData, 'applied_to')
+  if (!templateId || !fromDate || !toDate) throw new Error('Mall och datumintervall krävs.')
+
+  const [{ data: template }, { data: items }, { data: targets }] = await Promise.all([
+    supabaseAdmin.from('availability_templates').select('*').eq('id', templateId).eq('company_id', auth.membership!.companyId).is('archived_at', null).maybeSingle(),
+    supabaseAdmin.from('availability_template_items').select('*').eq('template_id', templateId).eq('company_id', auth.membership!.companyId).is('archived_at', null),
+    supabaseAdmin.from('availability_template_targets').select('*').eq('template_id', templateId).eq('company_id', auth.membership!.companyId).is('archived_at', null),
+  ])
+  if (!template) throw new Error('Mallen kunde inte hittas.')
+  if (!items?.length) throw new Error('Mallen saknar mallrader.')
+  if (!targets?.length) throw new Error('Mallen saknar personal/team som mål.')
+
+  const createdIds: string[] = []
+  let skipped = 0
+  const cursor = new Date(`${fromDate}T00:00:00`)
+  const end = new Date(`${toDate}T00:00:00`)
+
+  while (cursor <= end) {
+    const weekday = cursor.getDay() === 0 ? 7 : cursor.getDay()
+    const dateString = cursor.toISOString().slice(0, 10)
+    for (const item of items as any[]) {
+      if (Number(item.weekday) !== weekday) continue
+      for (const target of targets as any[]) {
+        const startsAt = `${dateString}T${String(item.start_time).slice(0,5)}:00`
+        const endsAt = `${dateString}T${String(item.end_time).slice(0,5)}:00`
+        const { data: existing } = await supabaseAdmin
+          .from('shifts')
+          .select('id')
+          .eq('company_id', auth.membership!.companyId)
+          .eq('shift_date', dateString)
+          .eq('starts_at', startsAt)
+          .eq('ends_at', endsAt)
+          .eq('source_template_id', templateId)
+          .eq(target.staff_profile_id ? 'staff_profile_id' : 'team_id', target.staff_profile_id ?? target.team_id)
+          .is('archived_at', null)
+          .maybeSingle()
+        if (existing) { skipped += 1; continue }
+        const total = minutesBetween(startsAt, endsAt)
+        const capacity = item.capacity_minutes ?? Math.max(0, total - Number(item.break_minutes ?? 0) - Number(item.buffer_minutes ?? 0))
+        const { data: shift, error } = await supabaseAdmin.from('shifts').insert({
+          company_id: auth.membership!.companyId,
+          staff_profile_id: target.staff_profile_id,
+          team_id: target.team_id,
+          title: item.title ?? template.name,
+          shift_date: dateString,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          status: 'planned',
+          role_label: item.role_label,
+          transport_mode: item.transport_mode ?? 'car',
+          start_location_type: item.start_location_type ?? 'company_base',
+          start_address_text: item.start_address_text,
+          end_location_type: item.end_location_type ?? 'company_base',
+          end_address_text: item.end_address_text,
+          total_minutes: total,
+          break_minutes: Number(item.break_minutes ?? 0),
+          buffer_minutes: Number(item.buffer_minutes ?? 0),
+          capacity_minutes: capacity,
+          remaining_minutes: capacity,
+          source: 'availability_template',
+          source_template_id: templateId,
+          notes: item.notes,
+          created_by: auth.userId,
+          updated_by: auth.userId,
+        }).select('id').single()
+        if (error) throw new Error(error.message)
+        createdIds.push(shift.id)
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  const { data: app, error: appError } = await supabaseAdmin.from('availability_template_applications').insert({
+    company_id: auth.membership!.companyId,
+    template_id: templateId,
+    applied_from: fromDate,
+    applied_to: toDate,
+    target_summary: { targetCount: targets.length, itemCount: items.length },
+    created_shift_ids: createdIds,
+    skipped_count: skipped,
+    applied_by: auth.userId,
+  }).select('id').single()
+  if (appError) throw new Error(appError.message)
+  await audit(auth.membership!.companyId, auth.userId, 'apply', 'availability_template', templateId, { applicationId: app.id, created: createdIds.length, skipped })
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, null, null)
+  revalidatePath('/schedule')
+  revalidatePath(`/availability/templates/${templateId}`)
+}
+
+export async function refreshAvailabilityConflictsAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att kontrollera tillgänglighetskonflikter')
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, value(formData, 'staff_profile_id'), value(formData, 'team_id'))
+  revalidatePath('/availability')
+  revalidatePath('/schedule')
+}

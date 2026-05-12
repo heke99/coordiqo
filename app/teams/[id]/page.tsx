@@ -14,7 +14,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
   if (!auth.membership) return null
   const { id } = await params
 
-  const [{ data: team }, { data: members }, { data: staff }] = await Promise.all([
+  const [{ data: team }, { data: members }, { data: staff }, { data: upcomingShifts }, { data: templateTargets }, { data: staffingRequirements }] = await Promise.all([
     supabaseAdmin
       .from('teams')
       .select('id, name, code, description, status, created_at, area_label, team_lead_staff_profile_id')
@@ -35,6 +35,9 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
       .eq('company_id', auth.membership.companyId)
       .is('archived_at', null)
       .order('full_name'),
+    supabaseAdmin.from('shifts').select('id, title, starts_at, ends_at, status, capacity_minutes, remaining_minutes').eq('company_id', auth.membership.companyId).eq('team_id', id).is('archived_at', null).gte('starts_at', new Date().toISOString()).order('starts_at').limit(8),
+    supabaseAdmin.from('availability_template_targets').select('id, availability_templates(id, name, target_type, status)').eq('company_id', auth.membership.companyId).eq('team_id', id).is('archived_at', null).limit(8),
+    supabaseAdmin.from('team_staffing_requirements').select('*').eq('company_id', auth.membership.companyId).eq('team_id', id).is('archived_at', null).order('created_at', { ascending: false }).limit(8),
   ])
 
   if (!team) notFound()
@@ -71,6 +74,16 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
               <input type="hidden" name="id" value={team.id} />
               <button className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Arkivera team</button>
             </form>
+          </section>
+
+
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Planeringsunderlag</h2>
+            <div className="mt-4 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-sm font-semibold text-slate-950">Kommande teampass</p>{upcomingShifts?.length ? upcomingShifts.map((shift: any) => <a key={shift.id} href={`/schedule/${shift.id}`} className="mt-2 block rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">{new Date(shift.starts_at).toLocaleString('sv-SE')} · {shift.title ?? 'Pass'} · kvar {shift.remaining_minutes ?? 0} min</a>) : <p className="mt-2 text-sm text-slate-500">Inga kommande teampass.</p>}</div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-sm font-semibold text-slate-950">Teammallar</p>{templateTargets?.length ? templateTargets.map((target: any) => <a key={target.id} href={`/availability/templates/${target.availability_templates?.id}`} className="mt-2 block rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">{target.availability_templates?.name ?? 'Mall'}</a>) : <p className="mt-2 text-sm text-slate-500">Ingen teammall kopplad.</p>}</div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-sm font-semibold text-slate-950">Bemanningskrav</p>{staffingRequirements?.length ? staffingRequirements.map((req: any) => <p key={req.id} className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">Min {req.min_staff} · Max {req.max_staff ?? '-'} · {req.required_role ?? 'Ingen roll'}</p>) : <p className="mt-2 text-sm text-slate-500">Inga bemanningskrav ännu.</p>}</div>
+            </div>
           </section>
 
           <section className="coordiqo-card p-5">
