@@ -2,128 +2,130 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 
+import { AppShell } from '@/components/app/app-shell'
+import { EmptyState } from '@/components/ui/empty-state'
+import { CORE_MODULES } from '@/lib/industry/config'
 import { requireAuth } from '@/lib/auth/session'
 
 export default async function DashboardPage() {
   const auth = await requireAuth()
 
-  return (
-    <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
-      <div className="coordiqo-shell space-y-6">
-        <section className="coordiqo-card p-6 sm:p-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <div className="coordiqo-badge coordiqo-badge--success">Coordiqo</div>
-              <div>
-                <p className="text-sm font-medium text-slate-500">Översikt</p>
-                <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                  {auth.profileName ? `Hej ${auth.profileName}` : 'Din dashboard är igång'}
-                </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-                  Coordiqos grund är nu på plats för tenant, onboarding och dashboard. Nästa steg är att bygga team,
-                  objekt, uppdrag och planeringsflöden ovanpå en stabil bas utan att gränssnittet känns som en demo.
-                </p>
-              </div>
-            </div>
+  if (!auth.membership) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 sm:py-8">
+        <div className="coordiqo-shell">
+          <EmptyState
+            eyebrow="Onboarding"
+            title="Slutför din första företagsmiljö"
+            description="Ditt konto är inloggat men saknar aktiv företagstillhörighet. Skapa eller koppla ditt första företag för att öppna Coordiqo-miljön."
+            action={
+              <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800" href="/setup">
+                Fortsätt till setup
+              </Link>
+            }
+          />
+        </div>
+      </main>
+    )
+  }
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <form action="/api/logout" method="post">
-                <button className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 sm:w-auto">
-                  Logga ut
-                </button>
-              </form>
-            </div>
+  const activeModules = new Set(auth.membership.activeModules)
+
+  return (
+    <AppShell
+      auth={auth}
+      title="Översikt"
+      subtitle="Styr företagets branschläge, team, objekt och kommande operativa flöden från en gemensam grund."
+      actions={
+        <Link href="/settings/industry" className="hidden rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 sm:inline-flex">
+          Branschmotor
+        </Link>
+      }
+    >
+      <div className="space-y-6">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="coordiqo-card p-5">
+            <p className="text-sm font-medium text-slate-500">Aktivt företag</p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.companyName}</h2>
+            <p className="mt-2 text-sm text-slate-600">{auth.membership.companySlug ?? 'slug saknas'}</p>
+          </div>
+          <div className="coordiqo-card p-5">
+            <p className="text-sm font-medium text-slate-500">Branschläge</p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.industryLabel}</h2>
+            <p className="mt-2 text-sm text-slate-600">{auth.membership.operationalModelLabel}</p>
+          </div>
+          <div className="coordiqo-card p-5">
+            <p className="text-sm font-medium text-slate-500">Aktiva moduler</p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.activeModules.length}</h2>
+            <p className="mt-2 text-sm text-slate-600">Moduler styr vad företaget ser och kan använda.</p>
+          </div>
+          <div className="coordiqo-card p-5">
+            <p className="text-sm font-medium text-slate-500">Din roll</p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.companyRole}</h2>
+            <p className="mt-2 text-sm text-slate-600">Behörigheter förfinas löpande per modul.</p>
           </div>
         </section>
 
-        {!auth.membership ? (
-          <section className="coordiqo-card border border-amber-200 bg-amber-50/70 p-6 sm:p-8">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="coordiqo-card p-6 sm:p-7">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-slate-950">Du behöver slutföra onboarding</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
-                  Ditt konto är inloggat, men saknar ännu en aktiv företagstillhörighet. Fortsätt till uppsättningen för
-                  att skapa eller koppla ditt första företag innan du använder plattformen vidare.
+                <p className="text-sm font-medium text-slate-500">Plattformsgrund</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Plattformen är redo för branschstyrning</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  Coordiqo har nu ett produktmässigt appskal och en grund för branschstyrning. Objektmodellen låses inte tidigt, utan styrs av branschpresets och företagsanpassningar.
                 </p>
               </div>
-              <Link
-                href="/setup"
-                className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Gå till setup
+              <Link href="/settings/industry" className="inline-flex rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
+                Se konfiguration
               </Link>
             </div>
-          </section>
-        ) : (
-          <>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="coordiqo-card p-5">
-                <p className="text-sm font-medium text-slate-500">Aktivt företag</p>
-                <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.companyName}</h2>
-                <p className="mt-2 text-sm text-slate-600">Slug: {auth.membership.companySlug ?? 'saknas ännu'}</p>
-              </div>
-              <div className="coordiqo-card p-5">
-                <p className="text-sm font-medium text-slate-500">Företagsroll</p>
-                <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.membership.companyRole}</h2>
-                <p className="mt-2 text-sm text-slate-600">Rollbaserad styrning byggs vidare i nästa batch.</p>
-              </div>
-              <div className="coordiqo-card p-5">
-                <p className="text-sm font-medium text-slate-500">Plattformsroll</p>
-                <h2 className="mt-3 text-lg font-semibold text-slate-950">{auth.platformRole ?? 'Inte satt ännu'}</h2>
-                <p className="mt-2 text-sm text-slate-600">Owner- och plattformslogik kommer i nästa steg.</p>
-              </div>
-              <div className="coordiqo-card p-5">
-                <p className="text-sm font-medium text-slate-500">Nästa fokus</p>
-                <h2 className="mt-3 text-lg font-semibold text-slate-950">Team, objekt och uppdrag</h2>
-                <p className="mt-2 text-sm text-slate-600">Det är där den riktiga operativa nyttan börjar byggas.</p>
-              </div>
-            </section>
 
-            <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="coordiqo-card p-6">
-                <h2 className="text-xl font-semibold text-slate-950">Vad som nu finns på plats</h2>
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">Tenant-grund</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Företag, settings, memberships och teamkopplingar är på plats för en stabil B2B-grund.
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">Onboardingflöde</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Konto, setup och dashboard hänger ihop så att nya företag kan startas utan manuella SQL-steg.
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">UI-bas</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Ett rent och mobilvänligt visuellt lager finns redan från början, i stället för klassisk demo-känsla.
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">Redo för nästa batch</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Nu kan vi fortsätta med branschmotor, flexibel objekttyp-registrering, entities och uppdrag.
-                    </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {CORE_MODULES.map((module) => (
+                <div key={module.code} className="rounded-2xl border border-slate-200 bg-white/75 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{module.label}</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{module.description}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${activeModules.has(module.code) ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                      {activeModules.has(module.code) ? 'Aktiv' : 'Planerad'}
+                    </span>
                   </div>
                 </div>
-              </div>
+              ))}
+            </div>
+          </div>
 
-              <aside className="coordiqo-card p-6">
-                <h2 className="text-xl font-semibold text-slate-950">Det som fortfarande saknas</h2>
-                <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-600">
-                  <li>• invite flow för fler användare</li>
-                  <li>• super admin- och owner-flöde</li>
-                  <li>• full permissions matrix i UI</li>
-                  <li>• företagssidor för team, objekt och uppdrag</li>
-                  <li>• flexibel, branschstyrd objektmodell i Batch 2</li>
-                </ul>
-              </aside>
-            </section>
-          </>
-        )}
+          <aside className="space-y-4">
+            <div className="coordiqo-card p-6">
+              <h2 className="text-xl font-semibold text-slate-950">Nästa byggsteg</h2>
+              <div className="mt-5 space-y-3">
+                {[
+                  'Personal, resurser och organisation',
+                  'Branschstyrda objekt och platser',
+                  'Uppdrag, ärenden och arbetsorder',
+                ].map((item) => (
+                  <div key={item} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="coordiqo-card p-6">
+              <h2 className="text-xl font-semibold text-slate-950">Saknas fortfarande</h2>
+              <ul className="mt-4 space-y-2 text-sm leading-6 text-slate-600">
+                <li>• invite flow för fler användare</li>
+                <li>• full permissions matrix i UI</li>
+                <li>• riktig super admin-vy</li>
+                <li>• seed/importflöde för större kunddata</li>
+              </ul>
+            </div>
+          </aside>
+        </section>
       </div>
-    </main>
+    </AppShell>
   )
 }

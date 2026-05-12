@@ -18,7 +18,8 @@ const industryOptions = [
   { value: 'healthcare', label: 'Hemsjukvård / vård' },
   { value: 'cleaning', label: 'Städ' },
   { value: 'property', label: 'Fastighet / hyresvärd' },
-  { value: 'service', label: 'Tekniker / service' },
+  { value: 'field_service', label: 'Tekniker / service' },
+  { value: 'parking', label: 'Parkeringsövervakning' },
   { value: 'staffing', label: 'Bemanning' },
   { value: 'security', label: 'Bevakning / patrull' },
   { value: 'construction', label: 'Bygg' },
@@ -101,7 +102,7 @@ export default function SetupForm({ userEmail }: { userEmail: string | null }) {
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
                 Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen tenant,
-                grundinställningar och ditt första team direkt. Objektmodellen låses inte här, utan blir branschstyrd i nästa batch.
+                grundinställningar och ditt första team direkt. Objektmodellen låses inte här, utan styrs av bransch och kan anpassas per företag.
               </p>
             </div>
 

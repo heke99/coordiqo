@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 
-import { createClient } from '@/lib/supabase/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getIndustryLabel, getOperationalModelLabel } from '@/lib/industry/config'
 import type { CompanyRole, PlatformRole } from '@/lib/auth/permissions'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 
 export type AuthContext = {
   userId: string
@@ -15,6 +16,12 @@ export type AuthContext = {
     companyName: string
     companyRole: CompanyRole
     companySlug: string | null
+    industryType: string | null
+    industryLabel: string
+    operationalModel: string | null
+    operationalModelLabel: string
+    activeModules: string[]
+    uiLabelSet: string | null
   } | null
 }
 
@@ -51,16 +58,31 @@ export async function requireAuth(): Promise<AuthContext> {
     name: string | null
     slug: string | null
     status: string | null
+    industry_type: string | null
+    operational_model: string | null
+  } | null = null
+
+  let settingsRecord: {
+    active_modules: string[] | null
+    ui_label_set: string | null
   } | null = null
 
   if (membershipRecord?.company_id) {
-    const { data: company } = await supabaseAdmin
-      .from('companies')
-      .select('name, slug, status')
-      .eq('id', membershipRecord.company_id)
-      .maybeSingle()
+    const [{ data: company }, { data: settings }] = await Promise.all([
+      supabaseAdmin
+        .from('companies')
+        .select('name, slug, status, industry_type, operational_model')
+        .eq('id', membershipRecord.company_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('company_settings')
+        .select('active_modules, ui_label_set')
+        .eq('company_id', membershipRecord.company_id)
+        .maybeSingle(),
+    ])
 
     companyRecord = company
+    settingsRecord = settings
   }
 
   if (membershipRecord && companyRecord?.status === 'inactive') {
@@ -80,6 +102,12 @@ export async function requireAuth(): Promise<AuthContext> {
             companyName: companyRecord.name ?? 'Unknown company',
             companySlug: companyRecord.slug ?? null,
             companyRole: membershipRecord.role as CompanyRole,
+            industryType: companyRecord.industry_type ?? null,
+            industryLabel: getIndustryLabel(companyRecord.industry_type),
+            operationalModel: companyRecord.operational_model ?? null,
+            operationalModelLabel: getOperationalModelLabel(companyRecord.operational_model),
+            activeModules: settingsRecord?.active_modules ?? [],
+            uiLabelSet: settingsRecord?.ui_label_set ?? null,
           }
         : null,
   }
