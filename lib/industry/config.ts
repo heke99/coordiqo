@@ -49,6 +49,7 @@ export const OPERATIONAL_MODEL_LABELS: Record<string, string> = {
 export const CORE_MODULES = [
   { code: 'foundation', label: 'Plattformsgrund', description: 'Auth, företag, roller, team och tenant-isolering.' },
   { code: 'industry_engine', label: 'Branschmotor', description: 'Styr språk, navigation, moduler och objektpresets per företag.' },
+  { code: 'resources', label: 'Personal och resurser', description: 'Personalprofiler, fordon, utrustning och organisation.' },
   { code: 'entities', label: 'Objektregister', description: 'Flexibel modell för kunder, platser, fastigheter, patienter och andra objekt.' },
   { code: 'tasks', label: 'Uppdrag och arbetsorder', description: 'Ärenden, besök, arbetsorder och statusflöden.' },
   { code: 'planning', label: 'Planering', description: 'Tilldelning, dagplan och senare optimering.' },

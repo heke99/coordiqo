@@ -32,6 +32,28 @@ export function canManageCompany(role: CompanyRole | null | undefined) {
   return hasMinimumCompanyRole(role, 'operations_manager')
 }
 
+export function canManageTeams(role: CompanyRole | null | undefined) {
+  return hasMinimumCompanyRole(role, 'supervisor')
+}
+
+export function canManageStaff(role: CompanyRole | null | undefined) {
+  return hasMinimumCompanyRole(role, 'supervisor')
+}
+
+export function canManageResources(role: CompanyRole | null | undefined) {
+  return hasMinimumCompanyRole(role, 'supervisor')
+}
+
+export function canManageEntities(role: CompanyRole | null | undefined) {
+  return hasMinimumCompanyRole(role, 'planner')
+}
+
 export function canPlan(role: CompanyRole | null | undefined) {
   return hasMinimumCompanyRole(role, 'planner')
+}
+
+export function assertCompanyPermission(role: CompanyRole | null | undefined, minimum: CompanyRole, label = 'åtgärden') {
+  if (!hasMinimumCompanyRole(role, minimum)) {
+    throw new Error(`Du saknar behörighet för ${label}.`)
+  }
 }

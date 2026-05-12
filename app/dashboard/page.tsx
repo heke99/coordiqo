@@ -73,7 +73,7 @@ export default async function DashboardPage() {
                 <p className="text-sm font-medium text-slate-500">Plattformsgrund</p>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Plattformen är redo för branschstyrning</h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                  Coordiqo har nu ett produktmässigt appskal och en grund för branschstyrning. Objektmodellen låses inte tidigt, utan styrs av branschpresets och företagsanpassningar.
+                  Coordiqo har nu ett produktmässigt appskal, branschmotor, personal/resursmodell och ett dynamiskt objektregister. Objektmodellen låses inte tidigt, utan styrs av branschpresets och företagsanpassningar.
                 </p>
               </div>
               <Link href="/settings/industry" className="inline-flex rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
@@ -103,9 +103,9 @@ export default async function DashboardPage() {
               <h2 className="text-xl font-semibold text-slate-950">Nästa byggsteg</h2>
               <div className="mt-5 space-y-3">
                 {[
-                  'Personal, resurser och organisation',
-                  'Branschstyrda objekt och platser',
-                  'Uppdrag, ärenden och arbetsorder',
+                  'Personal och team är redo för operativa profiler',
+                  'Resurser kan kopplas till personal och team',
+                  'Objektregistret kan skapa branschstyrda objekt',
                 ].map((item) => (
                   <div key={item} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700">
                     {item}
@@ -118,9 +118,9 @@ export default async function DashboardPage() {
               <h2 className="text-xl font-semibold text-slate-950">Saknas fortfarande</h2>
               <ul className="mt-4 space-y-2 text-sm leading-6 text-slate-600">
                 <li>• invite flow för fler användare</li>
+                <li>• uppdrag/arbetsorder och schema</li>
                 <li>• full permissions matrix i UI</li>
-                <li>• riktig super admin-vy</li>
-                <li>• seed/importflöde för större kunddata</li>
+                <li>• importflöde för större kunddata</li>
               </ul>
             </div>
           </aside>

@@ -5,6 +5,8 @@ import type { AuthContext } from '@/lib/auth/session'
 const primaryNav = [
   { href: '/dashboard', label: 'Översikt', description: 'Dagens läge' },
   { href: '/teams', label: 'Team', description: 'Grupper och ansvar' },
+  { href: '/staff', label: 'Personal', description: 'Profiler och roller' },
+  { href: '/resources', label: 'Resurser', description: 'Fordon, utrustning och nycklar' },
   { href: '/entities', label: 'Objekt', description: 'Branschstyrda objekt' },
   { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och arbetsorder' },
 ]
@@ -72,7 +74,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
         <div className="mt-auto rounded-3xl border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-950">Status</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Foundation och branschmotor är aktiva. Nästa steg är resurser, objekt och operativa flöden.
+            Foundation, branschmotor, personal, resurser och objektregister är aktiva. Nästa steg är uppdrag och planering.
           </p>
           <form action="/api/logout" method="post" className="mt-4">
             <button className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
