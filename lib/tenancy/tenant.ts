@@ -6,7 +6,7 @@ export async function requireActiveCompanyMembership() {
   const auth = await requireAuth()
 
   if (!auth.membership) {
-    redirect('/login?error=no-membership')
+    redirect('/setup')
   }
 
   return auth.membership
