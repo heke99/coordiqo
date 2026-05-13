@@ -1,6 +1,7 @@
 import { conflictLevel } from '@/lib/planning/conflict-detection'
 import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { evaluateResourceFit, mergeEvaluationWithResourceFit, resourceRequirementsForTask, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import type {
   CandidateEvaluation,
   ExistingAssignment,
@@ -184,7 +185,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
     if (input.projectPhaseId) taskQuery = taskQuery.eq('project_phase_id', input.projectPhaseId)
     if (input.projectWorkItemId) taskQuery = taskQuery.eq('project_work_item_id', input.projectWorkItemId)
 
-    const [{ data: taskRows, error: tasksError }, { data: staffRows }, { data: shiftRows }, { data: requirementRows }, { data: skillRows }, { data: certRows }, { data: absenceRows }, { data: assignmentRows }, { data: continuityRows }] = await Promise.all([
+    const [{ data: taskRows, error: tasksError }, { data: staffRows }, { data: shiftRows }, { data: requirementRows }, { data: skillRows }, { data: certRows }, { data: absenceRows }, { data: assignmentRows }, { data: continuityRows }, { data: resourceRequirementRows }, { data: resourceAssetRows }, { data: resourceAssignmentRows }] = await Promise.all([
       taskQuery,
       supabaseAdmin
         .from('staff_profiles')
@@ -244,6 +245,26 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
         .eq('company_id', input.companyId)
         .is('archived_at', null)
         .limit(500),
+      supabaseAdmin
+        .from('resource_requirements')
+        .select('id, company_id, owner_type, owner_id, resource_asset_id, resource_type_id, requirement_label, quantity, is_hard_requirement, description, allow_substitution, resource_assets(id, name), resource_types(id, name)')
+        .eq('company_id', input.companyId)
+        .is('archived_at', null)
+        .limit(1000),
+      supabaseAdmin
+        .from('resource_assets')
+        .select('id, company_id, resource_type_id, name, status, allow_overlapping, requires_return, location_label')
+        .eq('company_id', input.companyId)
+        .is('archived_at', null)
+        .limit(1000),
+      supabaseAdmin
+        .from('planning_resource_assignments')
+        .select('id, resource_asset_id, actual_resource_asset_id, planned_staff_profile_id, planned_team_id, planned_start_at, planned_end_at, status, planning_draft_item_id, task_id')
+        .eq('company_id', input.companyId)
+        .is('archived_at', null)
+        .lt('planned_start_at', endOfDay(input.dateTo))
+        .gt('planned_end_at', startOfDay(input.dateFrom))
+        .limit(1000),
     ])
 
     if (tasksError) throw new Error(tasksError.message)
@@ -257,6 +278,10 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
     const absencesByStaff = groupBy((absenceRows ?? []) as StaffAbsence[], (row) => row.staff_profile_id)
     const existingAssignments = (assignmentRows ?? []) as ExistingAssignment[]
     const continuity = continuityRows ?? []
+    const resourceRequirements = (resourceRequirementRows ?? []) as PlanningResourceRequirement[]
+    const resourceAssets = (resourceAssetRows ?? []) as PlanningResourceAsset[]
+    const existingResourceAssignments = (resourceAssignmentRows ?? []) as ExistingResourceAssignment[]
+    const plannedResourceAssignments: ExistingResourceAssignment[] = []
 
     let itemCount = 0
     let candidateCount = 0
@@ -273,12 +298,13 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
         return true
       })
 
+      const taskResourceRequirements = resourceRequirementsForTask(task, resourceRequirements)
       const candidates = eligibleStaff.slice(0, 25).map((person) => {
         const shift = findBestShiftForStaff(shifts, person.id, plannedStartAt, plannedEndAt)
         const requirements = (requirementsByTask.get(task.id) ?? []) as PlanningRequirement[]
         const continuityMatch = continuity.some((row: any) => row.entity_id === task.entity_id && row.staff_profile_id === person.id && row.preference_type !== 'avoid')
         const areaMatch = Boolean(task.assigned_team_id && person.primary_team_id === task.assigned_team_id)
-        const evaluation = evaluateCandidate({
+        const baseEvaluation = evaluateCandidate({
           task,
           staff: person,
           teamId: person.primary_team_id ?? null,
@@ -293,13 +319,24 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
           continuityMatch,
           areaMatch,
         })
-        return { person, shift, evaluation }
+        const resourceFit = evaluateResourceFit({
+          requirements: taskResourceRequirements,
+          resources: resourceAssets,
+          existingAssignments: [...existingResourceAssignments, ...plannedResourceAssignments],
+          plannedStartAt,
+          plannedEndAt,
+          staffProfileId: person.id,
+          teamId: person.primary_team_id ?? null,
+        })
+        const evaluation = mergeEvaluationWithResourceFit(baseEvaluation, resourceFit)
+        return { person, shift, evaluation, resourceFit }
       }).sort((a, b) => b.evaluation.score - a.evaluation.score)
 
       const best = candidates.find((candidate) => candidate.evaluation.eligible) ?? candidates[0] ?? null
       const topCandidates = candidates.slice(0, 5)
       let candidateId: string | null = null
       let evaluation = best?.evaluation ?? null
+      const selectedResourceFit: ResourceFitResult | null = best?.resourceFit ?? null
       const candidateRowIds: string[] = []
 
       for (const candidate of topCandidates) {
@@ -324,7 +361,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
             project_id: input.projectId ?? null,
             project_phase_id: input.projectPhaseId ?? null,
             project_work_item_id: input.projectWorkItemId ?? null,
-            metadata: { ...summarizeEvaluation(candidate.evaluation), rank: candidateRowIds.length + 1, selectedForDraft: candidate === best },
+            metadata: { ...summarizeEvaluation(candidate.evaluation), rank: candidateRowIds.length + 1, selectedForDraft: candidate === best, resourceFit: candidate.resourceFit.summary },
           })
           .select('id')
           .single()
@@ -374,7 +411,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
           project_id: input.projectId ?? null,
           project_phase_id: input.projectPhaseId ?? null,
           project_work_item_id: input.projectWorkItemId ?? null,
-          metadata: evaluation ? summarizeEvaluation(evaluation) : { eligible: false, reason: 'no_candidates' },
+          metadata: evaluation ? { ...summarizeEvaluation(evaluation), resourceFit: selectedResourceFit?.summary ?? null } : { eligible: false, reason: 'no_candidates' },
           sort_order: itemCount + 1,
         })
         .select('id')
@@ -385,6 +422,44 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
 
       if (candidateRowIds.length) {
         await supabaseAdmin.from('assignment_candidates').update({ planning_draft_item_id: item.id }).in('id', candidateRowIds)
+      }
+
+      if (selectedResourceFit?.selectedAssignments.length) {
+        const { error: resourceAssignmentError } = await supabaseAdmin.from('planning_resource_assignments').insert(selectedResourceFit.selectedAssignments.map((assignment) => ({
+          company_id: input.companyId,
+          planning_run_id: run.id,
+          planning_draft_id: draft.id,
+          planning_draft_item_id: item.id,
+          task_id: task.id,
+          resource_requirement_id: assignment.resourceRequirementId,
+          resource_asset_id: assignment.resourceAssetId,
+          resource_type_id: assignment.resourceTypeId,
+          planned_staff_profile_id: best?.person.id ?? null,
+          planned_team_id: best?.person.primary_team_id ?? task.assigned_team_id ?? null,
+          shift_id: best?.shift?.id ?? null,
+          planned_start_at: plannedStartAt,
+          planned_end_at: plannedEndAt,
+          assignment_kind: 'planned',
+          status: 'planned',
+          note: assignment.requirementLabel,
+          created_by: input.actorUserId,
+          updated_by: input.actorUserId,
+        })))
+        if (resourceAssignmentError) throw new Error(resourceAssignmentError.message)
+        for (const assignment of selectedResourceFit.selectedAssignments) {
+          plannedResourceAssignments.push({
+            id: `${item.id}-${assignment.resourceAssetId}`,
+            resource_asset_id: assignment.resourceAssetId,
+            actual_resource_asset_id: null,
+            planned_staff_profile_id: best?.person.id ?? null,
+            planned_team_id: best?.person.primary_team_id ?? task.assigned_team_id ?? null,
+            planned_start_at: plannedStartAt,
+            planned_end_at: plannedEndAt,
+            status: 'planned',
+            planning_draft_item_id: item.id,
+            task_id: task.id,
+          })
+        }
       }
 
       const conflicts = evaluation?.conflicts ?? [{ conflictType: 'no_candidates', severity: 'hard' as const, message: 'Inga kandidater kunde hittas.', details: {} }]

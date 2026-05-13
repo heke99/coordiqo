@@ -11,6 +11,7 @@ import { interpretAiPlanningPrompt, planningInputFromIntent } from '@/lib/planni
 import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
 import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '@/lib/planning/planning-engine'
 import { publishPlanningDraft } from '@/lib/planning/publish-draft'
+import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -102,11 +103,24 @@ async function loadManualPlanningEvaluation(params: {
   shiftId?: string | null
   plannedStartAt: string
   plannedEndAt: string
+  excludeDraftItemId?: string | null
 }) {
-  const [{ data: task }, { data: staff }, { data: shift }, { data: requirements }, { data: staffSkills }, { data: staffCertifications }, { data: absences }, { data: existingAssignments }] = await Promise.all([
+  const [
+    { data: task },
+    { data: staff },
+    { data: shift },
+    { data: requirements },
+    { data: staffSkills },
+    { data: staffCertifications },
+    { data: absences },
+    { data: existingAssignments },
+    { data: resourceRequirements },
+    { data: resourceAssets },
+    { data: existingResourceAssignments },
+  ] = await Promise.all([
     supabaseAdmin
       .from('tasks')
-      .select('id, company_id, task_type_id, entity_id, assigned_team_id, assigned_staff_id, title, priority, status, time_window_start, time_window_end, scheduled_start, scheduled_end, estimated_duration_minutes, sla_due_at')
+      .select('id, company_id, task_type_id, entity_id, assigned_team_id, assigned_staff_id, title, priority, status, time_window_start, time_window_end, scheduled_start, scheduled_end, estimated_duration_minutes, sla_due_at, project_id, project_phase_id, project_work_item_id')
       .eq('id', params.taskId)
       .eq('company_id', params.companyId)
       .is('archived_at', null)
@@ -171,12 +185,32 @@ async function loadManualPlanningEvaluation(params: {
       .lt('planned_start_at', params.plannedEndAt)
       .gt('planned_end_at', params.plannedStartAt)
       .limit(100),
+    supabaseAdmin
+      .from('resource_requirements')
+      .select('id, company_id, owner_type, owner_id, resource_asset_id, resource_type_id, requirement_label, quantity, is_hard_requirement, description, allow_substitution, resource_assets(id, name), resource_types(id, name)')
+      .eq('company_id', params.companyId)
+      .is('archived_at', null)
+      .limit(1000),
+    supabaseAdmin
+      .from('resource_assets')
+      .select('id, company_id, resource_type_id, name, status, allow_overlapping, requires_return, location_label')
+      .eq('company_id', params.companyId)
+      .is('archived_at', null)
+      .limit(1000),
+    supabaseAdmin
+      .from('planning_resource_assignments')
+      .select('id, resource_asset_id, actual_resource_asset_id, planned_staff_profile_id, planned_team_id, planned_start_at, planned_end_at, status, planning_draft_item_id, task_id')
+      .eq('company_id', params.companyId)
+      .is('archived_at', null)
+      .lt('planned_start_at', params.plannedEndAt)
+      .gt('planned_end_at', params.plannedStartAt)
+      .limit(1000),
   ])
 
   if (!task) throw new Error('Uppdraget kunde inte hittas.')
   if (params.staffProfileId && !staff) throw new Error('Personalen kunde inte hittas.')
 
-  const evaluation = evaluateCandidate({
+  const baseEvaluation = evaluateCandidate({
     task: task as any,
     staff: staff as any,
     teamId: params.teamId ?? (staff as any)?.primary_team_id ?? null,
@@ -192,7 +226,26 @@ async function loadManualPlanningEvaluation(params: {
     areaMatch: Boolean((task as any).assigned_team_id && (staff as any)?.primary_team_id === (task as any).assigned_team_id),
   })
 
-  return { task, staff, shift, evaluation }
+  const taskResourceRequirements = ((resourceRequirements ?? []) as PlanningResourceRequirement[]).filter((requirement) => {
+    if (requirement.owner_type === 'task' && requirement.owner_id === params.taskId) return true
+    if (requirement.owner_type === 'entity' && (task as any).entity_id && requirement.owner_id === (task as any).entity_id) return true
+    if (requirement.owner_type === 'project' && (task as any).project_id && requirement.owner_id === (task as any).project_id) return true
+    if (requirement.owner_type === 'project_work_item' && (task as any).project_work_item_id && requirement.owner_id === (task as any).project_work_item_id) return true
+    return false
+  })
+  const resourceFit = evaluateResourceFit({
+    requirements: taskResourceRequirements,
+    resources: (resourceAssets ?? []) as PlanningResourceAsset[],
+    existingAssignments: (existingResourceAssignments ?? []) as ExistingResourceAssignment[],
+    plannedStartAt: params.plannedStartAt,
+    plannedEndAt: params.plannedEndAt,
+    staffProfileId: params.staffProfileId ?? null,
+    teamId: params.teamId ?? (staff as any)?.primary_team_id ?? null,
+    excludeDraftItemId: params.excludeDraftItemId ?? null,
+  })
+  const evaluation = mergeEvaluationWithResourceFit(baseEvaluation, resourceFit)
+
+  return { task, staff, shift, evaluation, resourceFit }
 }
 
 async function requireMembership(minimumRole: Parameters<typeof assertCompanyPermission>[1], label: string) {
@@ -211,6 +264,88 @@ async function audit(companyId: string, actorUserId: string, action: string, ent
     entity_id: entityId,
     metadata,
   })
+}
+
+async function syncDraftItemResourceAssignments(params: {
+  companyId: string
+  actorUserId: string
+  draftId: string
+  itemId: string
+  taskId: string
+  planningRunId?: string | null
+  staffProfileId?: string | null
+  teamId?: string | null
+  shiftId?: string | null
+  plannedStartAt: string
+  plannedEndAt: string
+  resourceFit: ResourceFitResult
+}) {
+  await supabaseAdmin
+    .from('planning_resource_assignments')
+    .update({ status: 'cancelled', archived_at: new Date().toISOString(), updated_by: params.actorUserId })
+    .eq('company_id', params.companyId)
+    .eq('planning_draft_item_id', params.itemId)
+    .is('task_assignment_id', null)
+    .is('archived_at', null)
+
+  if (!params.resourceFit.selectedAssignments.length) return
+
+  const { error } = await supabaseAdmin.from('planning_resource_assignments').insert(params.resourceFit.selectedAssignments.map((assignment) => ({
+    company_id: params.companyId,
+    planning_run_id: params.planningRunId ?? null,
+    planning_draft_id: params.draftId,
+    planning_draft_item_id: params.itemId,
+    task_id: params.taskId,
+    resource_requirement_id: assignment.resourceRequirementId,
+    resource_asset_id: assignment.resourceAssetId,
+    resource_type_id: assignment.resourceTypeId,
+    planned_staff_profile_id: params.staffProfileId ?? null,
+    planned_team_id: params.teamId ?? null,
+    shift_id: params.shiftId ?? null,
+    planned_start_at: params.plannedStartAt,
+    planned_end_at: params.plannedEndAt,
+    assignment_kind: 'planned',
+    status: 'planned',
+    note: assignment.requirementLabel,
+    created_by: params.actorUserId,
+    updated_by: params.actorUserId,
+  })))
+
+  if (error) throw new Error(error.message)
+}
+
+async function createAssignmentResourceResponsibilities(params: {
+  companyId: string
+  actorUserId: string
+  taskAssignmentId: string
+  taskId: string
+  staffProfileId?: string | null
+  teamId?: string | null
+  shiftId?: string | null
+  plannedStartAt: string
+  plannedEndAt: string
+  resourceFit: ResourceFitResult
+}) {
+  if (!params.resourceFit.selectedAssignments.length) return
+  const { error } = await supabaseAdmin.from('planning_resource_assignments').insert(params.resourceFit.selectedAssignments.map((assignment) => ({
+    company_id: params.companyId,
+    task_assignment_id: params.taskAssignmentId,
+    task_id: params.taskId,
+    resource_requirement_id: assignment.resourceRequirementId,
+    resource_asset_id: assignment.resourceAssetId,
+    resource_type_id: assignment.resourceTypeId,
+    planned_staff_profile_id: params.staffProfileId ?? null,
+    planned_team_id: params.teamId ?? null,
+    shift_id: params.shiftId ?? null,
+    planned_start_at: params.plannedStartAt,
+    planned_end_at: params.plannedEndAt,
+    assignment_kind: 'manual',
+    status: 'planned',
+    note: assignment.requirementLabel,
+    created_by: params.actorUserId,
+    updated_by: params.actorUserId,
+  })))
+  if (error) throw new Error(error.message)
 }
 
 export async function createTeamAction(formData: FormData) {
@@ -378,6 +513,8 @@ export async function createResourceAction(formData: FormData) {
       assigned_staff_id: value(formData, 'assigned_staff_id'),
       assigned_team_id: value(formData, 'assigned_team_id'),
       location_label: value(formData, 'location_label'),
+      allow_overlapping: formData.get('allow_overlapping') === 'on',
+      requires_return: formData.get('requires_return') !== 'off',
       notes: value(formData, 'notes'),
       created_by: auth.userId,
       updated_by: auth.userId,
@@ -406,6 +543,8 @@ export async function updateResourceAction(formData: FormData) {
       assigned_staff_id: value(formData, 'assigned_staff_id'),
       assigned_team_id: value(formData, 'assigned_team_id'),
       location_label: value(formData, 'location_label'),
+      allow_overlapping: formData.get('allow_overlapping') === 'on',
+      requires_return: formData.get('requires_return') !== 'off',
       notes: value(formData, 'notes'),
       updated_by: auth.userId,
     })
@@ -433,6 +572,260 @@ export async function archiveResourceAction(formData: FormData) {
   await audit(auth.membership!.companyId, auth.userId, 'archive', 'resource_asset', id)
   revalidatePath('/resources')
   redirect('/resources')
+}
+
+export async function createResourceTypeAction(formData: FormData) {
+  const auth = await requireMembership('supervisor', 'att skapa resurstyp')
+  const name = value(formData, 'name')
+  if (!name) throw new Error('Namn på resurstyp krävs.')
+  const code = normalizeCode(value(formData, 'code') ?? name)
+  if (!code) throw new Error('Kod för resurstyp kunde inte skapas.')
+
+  const { data, error } = await supabaseAdmin
+    .from('resource_types')
+    .insert({
+      company_id: auth.membership!.companyId,
+      name,
+      code,
+      description: value(formData, 'description'),
+      is_active: true,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'resource_type', data.id, { name, code })
+  revalidatePath('/resources')
+  revalidatePath('/resources/new')
+}
+
+export async function createResourceRequirementAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att lägga till resurskrav')
+  const ownerType = value(formData, 'owner_type')
+  const ownerId = value(formData, 'owner_id')
+  const returnPath = value(formData, 'return_path') ?? '/resources'
+  const requirementMode = value(formData, 'requirement_mode') ?? 'exact'
+  const resourceAssetId = requirementMode === 'exact' ? value(formData, 'resource_asset_id') : null
+  const resourceTypeId = requirementMode === 'type' ? value(formData, 'resource_type_id') : null
+  const label = value(formData, 'requirement_label')
+
+  if (!ownerType || !ownerId) throw new Error('Koppling för resurskrav saknas.')
+  if (!resourceAssetId && !resourceTypeId && !label) throw new Error('Välj en resurs, en resurstyp eller skriv ett tydligt krav.')
+
+  const { data, error } = await supabaseAdmin
+    .from('resource_requirements')
+    .insert({
+      company_id: auth.membership!.companyId,
+      owner_type: ownerType,
+      owner_id: ownerId,
+      resource_asset_id: resourceAssetId,
+      resource_type_id: resourceTypeId,
+      requirement_label: label,
+      quantity: Math.max(1, integerFromForm(formData, 'quantity', 1)),
+      is_hard_requirement: value(formData, 'is_hard_requirement') !== 'false',
+      allow_substitution: value(formData, 'allow_substitution') !== 'false',
+      description: value(formData, 'description'),
+      metadata: { createdFrom: returnPath },
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'resource_requirement', data.id, { ownerType, ownerId, resourceAssetId, resourceTypeId })
+  revalidatePath(returnPath)
+}
+
+export async function archiveResourceRequirementAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att ta bort resurskrav')
+  const id = value(formData, 'id')
+  const returnPath = value(formData, 'return_path') ?? '/resources'
+  if (!id) throw new Error('Resurskrav-id saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('resource_requirements')
+    .update({ archived_at: new Date().toISOString(), updated_by: auth.userId })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'resource_requirement', id)
+  revalidatePath(returnPath)
+}
+
+async function staffProfileForCurrentMembership(companyId: string, membershipId: string) {
+  const { data } = await supabaseAdmin
+    .from('staff_profiles')
+    .select('id, full_name')
+    .eq('company_id', companyId)
+    .eq('membership_id', membershipId)
+    .is('archived_at', null)
+    .maybeSingle()
+  return data as { id: string; full_name: string | null } | null
+}
+
+export async function updateResourceAssignmentStatusAction(formData: FormData) {
+  const auth = await requireMembership('staff', 'att kvittera resurser')
+  const id = value(formData, 'id')
+  const actionType = value(formData, 'action_type')
+  const returnPath = value(formData, 'return_path') ?? '/staff/mobile/resources'
+  const comment = value(formData, 'comment')
+  const reasonCode = value(formData, 'reason_code')
+  const replacementResourceId = value(formData, 'replacement_resource_asset_id')
+  if (!id || !actionType) throw new Error('Resursrad och åtgärd krävs.')
+
+  const { data: assignment } = await supabaseAdmin
+    .from('planning_resource_assignments')
+    .select('id, company_id, resource_asset_id, actual_resource_asset_id, planned_staff_profile_id, planned_team_id, task_id, status')
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (!assignment) throw new Error('Resursraden kunde inte hittas.')
+
+  const currentStaff = await staffProfileForCurrentMembership(auth.membership!.companyId, auth.membership!.membershipId)
+  const allowedForStaff = currentStaff?.id && (assignment as any).planned_staff_profile_id === currentStaff.id
+  const allowedForAdmin = ['company_admin', 'operations_manager', 'planner', 'supervisor', 'dispatcher', 'team_lead'].includes(auth.membership!.companyRole)
+  if (!allowedForStaff && !allowedForAdmin) throw new Error('Du kan bara kvittera dina egna resurser.')
+
+  let status = (assignment as any).status ?? 'planned'
+  let actualResourceAssetId = (assignment as any).actual_resource_asset_id ?? null
+  if (actionType === 'picked_up') {
+    status = 'picked_up'
+    actualResourceAssetId = actualResourceAssetId ?? (assignment as any).resource_asset_id
+  } else if (actionType === 'returned') {
+    status = 'returned'
+  } else if (actionType === 'not_picked_up') {
+    status = 'not_picked_up'
+  } else if (actionType === 'replaced') {
+    if (!replacementResourceId) throw new Error('Välj vilken ersättningsresurs som användes.')
+    status = 'replaced'
+    actualResourceAssetId = replacementResourceId
+  } else if (actionType === 'issue_reported') {
+    status = 'issue_reported'
+  } else if (actionType === 'cancelled') {
+    status = 'cancelled'
+  } else {
+    throw new Error('Okänd resursåtgärd.')
+  }
+
+  const timestampField = actionType === 'picked_up' || actionType === 'replaced' ? { picked_up_at: new Date().toISOString() } : actionType === 'returned' ? { returned_at: new Date().toISOString() } : {}
+  const { error } = await supabaseAdmin
+    .from('planning_resource_assignments')
+    .update({
+      status,
+      actual_resource_asset_id: actualResourceAssetId,
+      last_event_at: new Date().toISOString(),
+      note: comment ?? (assignment as any).note ?? null,
+      updated_by: auth.userId,
+      ...timestampField,
+    })
+    .eq('id', id)
+    .eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+
+  const { error: eventError } = await supabaseAdmin.from('resource_usage_events').insert({
+    company_id: auth.membership!.companyId,
+    resource_assignment_id: id,
+    resource_asset_id: (assignment as any).resource_asset_id,
+    actual_resource_asset_id: actualResourceAssetId,
+    event_type: actionType,
+    performed_by_user_id: auth.userId,
+    staff_profile_id: currentStaff?.id ?? (assignment as any).planned_staff_profile_id ?? null,
+    task_id: (assignment as any).task_id ?? null,
+    reason_code: reasonCode,
+    comment,
+    replacement_resource_asset_id: replacementResourceId,
+    metadata: { previousStatus: (assignment as any).status ?? null },
+  })
+  if (eventError) throw new Error(eventError.message)
+
+  if (['not_picked_up', 'replaced', 'issue_reported'].includes(actionType)) {
+    await supabaseAdmin.from('resource_deviations').insert({
+      company_id: auth.membership!.companyId,
+      resource_assignment_id: id,
+      resource_asset_id: (assignment as any).resource_asset_id,
+      reported_by_user_id: auth.userId,
+      staff_profile_id: currentStaff?.id ?? (assignment as any).planned_staff_profile_id ?? null,
+      deviation_type: reasonCode ?? actionType,
+      description: comment,
+      replacement_resource_asset_id: replacementResourceId,
+      status: 'open',
+    })
+  }
+
+  await audit(auth.membership!.companyId, auth.userId, actionType, 'planning_resource_assignment', id, { status, actualResourceAssetId, reasonCode })
+  revalidatePath(returnPath)
+  revalidatePath('/resources')
+}
+
+export async function createExtraResourceUsageAction(formData: FormData) {
+  const auth = await requireMembership('staff', 'att lägga till extra resurs')
+  const resourceAssetId = value(formData, 'resource_asset_id')
+  const taskId = value(formData, 'task_id')
+  const returnPath = value(formData, 'return_path') ?? '/staff/mobile/resources'
+  const comment = value(formData, 'comment')
+  const reasonCode = value(formData, 'reason_code') ?? 'extra_resource'
+  if (!resourceAssetId) throw new Error('Välj resurs.')
+
+  const currentStaff = await staffProfileForCurrentMembership(auth.membership!.companyId, auth.membership!.membershipId)
+  if (!currentStaff) throw new Error('Din användare saknar kopplad personalprofil.')
+
+  const now = new Date()
+  const start = value(formData, 'planned_start_at') ?? now.toISOString()
+  const end = value(formData, 'planned_end_at') ?? new Date(now.getTime() + 8 * 60 * 60000).toISOString()
+
+  const { data: asset } = await supabaseAdmin
+    .from('resource_assets')
+    .select('id, resource_type_id, name')
+    .eq('id', resourceAssetId)
+    .eq('company_id', auth.membership!.companyId)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (!asset) throw new Error('Resursen kunde inte hittas.')
+
+  const { data: row, error } = await supabaseAdmin
+    .from('planning_resource_assignments')
+    .insert({
+      company_id: auth.membership!.companyId,
+      task_id: taskId,
+      resource_asset_id: resourceAssetId,
+      actual_resource_asset_id: resourceAssetId,
+      resource_type_id: (asset as any).resource_type_id ?? null,
+      planned_staff_profile_id: currentStaff.id,
+      planned_start_at: start,
+      planned_end_at: end,
+      assignment_kind: 'extra',
+      status: 'picked_up',
+      picked_up_at: new Date().toISOString(),
+      last_event_at: new Date().toISOString(),
+      note: comment ?? `Extra resurs: ${(asset as any).name}`,
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+
+  const { error: eventError } = await supabaseAdmin.from('resource_usage_events').insert({
+    company_id: auth.membership!.companyId,
+    resource_assignment_id: row.id,
+    resource_asset_id: resourceAssetId,
+    actual_resource_asset_id: resourceAssetId,
+    event_type: 'extra_added',
+    performed_by_user_id: auth.userId,
+    staff_profile_id: currentStaff.id,
+    task_id: taskId,
+    reason_code: reasonCode,
+    comment,
+    metadata: { source: 'mobile_extra_resource' },
+  })
+  if (eventError) throw new Error(eventError.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'extra_added', 'planning_resource_assignment', row.id, { resourceAssetId, taskId })
+  revalidatePath(returnPath)
+  revalidatePath('/resources')
 }
 
 export async function createEntityAction(formData: FormData) {
@@ -1492,7 +1885,7 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
   plannedEndAt = plannedEndAt ?? addMinutesIso(plannedStartAt, Number(durationTask?.estimated_duration_minutes ?? 60))
   if (new Date(plannedEndAt) <= new Date(plannedStartAt)) throw new Error('Planerad sluttid måste vara efter starttid.')
 
-  const { task, staff, shift, evaluation } = await loadManualPlanningEvaluation({
+  const { task, staff, shift, evaluation, resourceFit } = await loadManualPlanningEvaluation({
     companyId: auth.membership!.companyId,
     taskId,
     staffProfileId,
@@ -1544,6 +1937,19 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
     .single()
 
   if (error) throw new Error(error.message)
+
+  await createAssignmentResourceResponsibilities({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    taskAssignmentId: assignment.id,
+    taskId,
+    staffProfileId,
+    teamId: teamId ?? (staff as any)?.primary_team_id ?? null,
+    shiftId,
+    plannedStartAt,
+    plannedEndAt,
+    resourceFit,
+  })
 
   if (evaluation.conflicts.length > 0) {
     const { error: conflictError } = await supabaseAdmin.from('planning_conflicts').insert(evaluation.conflicts.map((conflict) => ({
@@ -1601,7 +2007,7 @@ async function replaceDraftItemConflicts(params: {
   plannedStartAt: string
   plannedEndAt: string
 }) {
-  const { task, staff, shift, evaluation } = await loadManualPlanningEvaluation({
+  const { task, staff, shift, evaluation, resourceFit } = await loadManualPlanningEvaluation({
     companyId: params.companyId,
     taskId: params.taskId,
     staffProfileId: params.staffProfileId,
@@ -1609,6 +2015,7 @@ async function replaceDraftItemConflicts(params: {
     shiftId: params.shiftId,
     plannedStartAt: params.plannedStartAt,
     plannedEndAt: params.plannedEndAt,
+    excludeDraftItemId: params.itemId,
   })
 
   await supabaseAdmin
@@ -1650,6 +2057,7 @@ async function replaceDraftItemConflicts(params: {
     conflictLevel: level,
     eligible,
     rejectionReason: eligible ? null : evaluation.rejectionReason,
+    resourceFit,
   }
 }
 
@@ -1795,7 +2203,7 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
 
   const { data: currentItem, error: currentError } = await supabaseAdmin
     .from('planning_draft_items')
-    .select('id, task_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, explanation, is_locked, locked_reason')
+    .select('id, task_id, planning_run_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, explanation, is_locked, locked_reason')
     .eq('id', itemId)
     .eq('planning_draft_id', draftId)
     .eq('company_id', auth.membership!.companyId)
@@ -1849,6 +2257,20 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
     .eq('company_id', auth.membership!.companyId)
 
   if (error) throw new Error(error.message)
+  await syncDraftItemResourceAssignments({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    draftId,
+    itemId,
+    taskId: (currentItem as any).task_id,
+    planningRunId: (currentItem as any).planning_run_id ?? null,
+    staffProfileId,
+    teamId: teamId ?? (recalculated.staff as any)?.primary_team_id ?? null,
+    shiftId,
+    plannedStartAt,
+    plannedEndAt,
+    resourceFit: recalculated.resourceFit,
+  })
   await audit(auth.membership!.companyId, auth.userId, 'update', 'planning_draft_item', itemId, { draftId, score: recalculated.evaluation.score, conflictLevel: recalculated.conflictLevel })
   revalidatePath('/planning')
   revalidatePath('/planning/runs')
@@ -1864,7 +2286,7 @@ export async function applyCandidateToPlanningDraftItemAction(formData: FormData
   const [{ data: item }, { data: candidate }] = await Promise.all([
     supabaseAdmin
       .from('planning_draft_items')
-      .select('id, task_id')
+      .select('id, task_id, planning_run_id')
       .eq('id', itemId)
       .eq('planning_draft_id', draftId)
       .eq('company_id', auth.membership!.companyId)
@@ -1917,6 +2339,20 @@ export async function applyCandidateToPlanningDraftItemAction(formData: FormData
     .eq('planning_draft_id', draftId)
     .eq('company_id', auth.membership!.companyId)
   if (error) throw new Error(error.message)
+  await syncDraftItemResourceAssignments({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    draftId,
+    itemId,
+    taskId: (candidate as any).task_id,
+    planningRunId: (item as any).planning_run_id ?? null,
+    staffProfileId: (candidate as any).staff_profile_id ?? null,
+    teamId: (candidate as any).team_id ?? null,
+    shiftId: (candidate as any).shift_id ?? null,
+    plannedStartAt: (candidate as any).planned_start_at,
+    plannedEndAt: (candidate as any).planned_end_at,
+    resourceFit: recalculated.resourceFit,
+  })
 
   await audit(auth.membership!.companyId, auth.userId, 'apply', 'assignment_candidate', candidateId, { itemId, draftId, score: recalculated.evaluation.score, conflictLevel: recalculated.conflictLevel })
   revalidatePath('/planning')

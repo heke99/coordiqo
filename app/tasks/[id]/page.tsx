@@ -7,7 +7,7 @@ import { TaskForm } from '@/components/tasks/task-form'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
-import { archiveTaskAction, archiveTaskRequirementAction, createManualTaskAssignmentAction, createTaskCommentAction, createTaskRequirementAction, resolveRuleViolationAction, runTaskRuleCheckAction, updateTaskAction } from '@/lib/platform/actions'
+import { archiveResourceRequirementAction, archiveTaskAction, archiveTaskRequirementAction, createManualTaskAssignmentAction, createResourceRequirementAction, createTaskCommentAction, createTaskRequirementAction, resolveRuleViolationAction, runTaskRuleCheckAction, updateTaskAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function datetimeLocal(value: string | null | undefined) {
@@ -23,7 +23,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   if (!auth.membership) return null
   const { id } = await params
 
-  const [{ data: task }, { data: taskTypes }, { data: entities }, { data: teams }, { data: staff }, { data: shifts }, { data: assignments }, { data: planningConflicts }, { data: workOrders }, { data: comments }, { data: history }, { data: skills }, { data: certifications }, { data: requirements }, { data: violations }] = await Promise.all([
+  const [{ data: task }, { data: taskTypes }, { data: entities }, { data: teams }, { data: staff }, { data: shifts }, { data: assignments }, { data: planningConflicts }, { data: workOrders }, { data: comments }, { data: history }, { data: skills }, { data: certifications }, { data: requirements }, { data: violations }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([
     supabaseAdmin.from('tasks').select('*, entities(name), teams(name), staff_profiles(full_name), task_types(name), work_orders(title)').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),
     supabaseAdmin.from('task_types').select('id, name').eq('company_id', auth.membership.companyId).eq('is_active', true).is('archived_at', null).order('name'),
     supabaseAdmin.from('entities').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(200),
@@ -39,6 +39,9 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     supabaseAdmin.from('certifications').select('id, name, category').eq('company_id', auth.membership.companyId).eq('is_active', true).is('archived_at', null).order('name'),
     supabaseAdmin.from('task_requirements').select('id, requirement_kind, skill_id, certification_id, required_value, is_hard_requirement, description, skills(name), certifications(name)').eq('company_id', auth.membership.companyId).eq('task_id', id).is('archived_at', null).order('created_at', { ascending: false }),
     supabaseAdmin.from('rule_violations').select('id, severity, status, violation_code, message, created_at, staff_profiles(full_name)').eq('company_id', auth.membership.companyId).eq('task_id', id).is('archived_at', null).order('created_at', { ascending: false }).limit(30),
+    supabaseAdmin.from('resource_types').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
+    supabaseAdmin.from('resource_assets').select('id, name, resource_type_id, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(300),
+    supabaseAdmin.from('resource_requirements').select('id, owner_type, owner_id, requirement_label, quantity, is_hard_requirement, description, resource_assets(name), resource_types(name)').eq('company_id', auth.membership.companyId).eq('owner_type', 'task').eq('owner_id', id).is('archived_at', null).order('created_at', { ascending: false }),
   ])
 
   if (!task) notFound()
@@ -92,7 +95,26 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             <div className="mt-5 space-y-3">{planningConflicts?.length ? planningConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-amber-950">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.conflict_type} · {conflict.status} · {new Date(conflict.created_at).toLocaleString('sv-SE')}</p></div><StatusBadge status={conflict.severity} tone={['hard', 'critical', 'blocked'].includes(conflict.severity) ? 'danger' : 'warning'} /></div></div>) : <p className="text-sm text-slate-600">Inga planeringskonflikter registrerade.</p>}</div>
           </section>
 
-          
+                    <FormCard title="Resurser som behövs" description="Branschneutrala resurskrav som AI-planeraren tar hänsyn till. Välj exakt resurs, till exempel Nyckel 15, eller valfri resurs av en typ, till exempel Bil.">
+            <form action={createResourceRequirementAction} className="grid gap-4">
+              <input type="hidden" name="owner_type" value="task" />
+              <input type="hidden" name="owner_id" value={task.id} />
+              <input type="hidden" name="return_path" value={`/tasks/${task.id}`} />
+              <Field label="Kravtyp"><select name="requirement_mode" defaultValue="exact" className={selectClassName}><option value="exact">Exakt resurs</option><option value="type">Valfri resurs av typ</option><option value="custom">Eget krav/namn</option></select></Field>
+              <Field label="Exakt resurs"><select name="resource_asset_id" className={selectClassName}><option value="">Ingen exakt resurs</option>{resources?.map((resource: any) => <option key={resource.id} value={resource.id}>{resource.name} · {resource.status}</option>)}</select></Field>
+              <Field label="Resurstyp"><select name="resource_type_id" className={selectClassName}><option value="">Ingen typ</option>{resourceTypes?.map((type: any) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></Field>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Namn/label"><input name="requirement_label" className={inputClassName} placeholder="Ex. nyckel, bil, borrmaskin" /></Field>
+                <Field label="Antal"><input name="quantity" type="number" min="1" defaultValue="1" className={inputClassName} /></Field>
+                <Field label="Kravnivå"><select name="is_hard_requirement" defaultValue="true" className={selectClassName}><option value="true">Hårt krav</option><option value="false">Mjuk varning</option></select></Field>
+              </div>
+              <Field label="Beskrivning"><textarea name="description" className={textareaClassName} placeholder="Ex. behövs för tillträde, transport eller särskilt arbetsmoment" /></Field>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Lägg till resurskrav</button>
+            </form>
+            <div className="mt-5 space-y-3">{resourceRequirements?.length ? resourceRequirements.map((requirement: any) => <div key={requirement.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{requirement.resource_assets?.name ?? requirement.resource_types?.name ?? requirement.requirement_label ?? 'Resurskrav'}</p><p className="mt-1 text-sm text-slate-500">{requirement.quantity ?? 1} st · {requirement.is_hard_requirement ? 'hårt krav' : 'mjuk varning'}</p>{requirement.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{requirement.description}</p> : null}</div><form action={archiveResourceRequirementAction}><input type="hidden" name="id" value={requirement.id} /><input type="hidden" name="return_path" value={`/tasks/${task.id}`} /><button className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Ta bort</button></form></div></div>) : <p className="text-sm text-slate-600">Inga resurskrav ännu.</p>}</div>
+          </FormCard>
+
+
           <FormCard title="Uppdragskrav" description="Lägg krav som regelmotorn använder när personal tilldelas. Hårda krav ska blockera fel matchning, mjuka krav varnar.">
             <form action={createTaskRequirementAction} className="grid gap-4">
               <input type="hidden" name="task_id" value={task.id} />

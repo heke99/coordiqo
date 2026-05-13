@@ -82,6 +82,22 @@ export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
       .eq('company_id', input.companyId)
 
     await supabaseAdmin
+      .from('planning_resource_assignments')
+      .update({
+        task_assignment_id: assignment.id,
+        planned_staff_profile_id: item.staff_profile_id,
+        planned_team_id: item.team_id,
+        shift_id: item.shift_id,
+        planned_start_at: item.planned_start_at,
+        planned_end_at: item.planned_end_at,
+        status: 'planned',
+        updated_by: input.actorUserId,
+      })
+      .eq('company_id', input.companyId)
+      .eq('planning_draft_item_id', item.id)
+      .is('archived_at', null)
+
+    await supabaseAdmin
       .from('tasks')
       .update({
         assigned_staff_id: item.staff_profile_id,

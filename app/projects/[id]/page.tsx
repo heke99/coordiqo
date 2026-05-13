@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
+import { ResourceRequirementPanel } from '@/components/resources/resource-requirement-panel'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
@@ -23,7 +24,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!auth.membership) return null
   const { id } = await params
 
-  const [{ data: project }, { data: phases }, { data: workItems }, { data: tasks }, { data: runs }] = await Promise.all([
+  const [{ data: project }, { data: phases }, { data: workItems }, { data: tasks }, { data: runs }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([
     supabaseAdmin
       .from('projects')
       .select('*, entities(display_name), project_templates(name)')
@@ -60,6 +61,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       .is('archived_at', null)
       .order('created_at', { ascending: false })
       .limit(8),
+    supabaseAdmin.from('resource_types').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
+    supabaseAdmin.from('resource_assets').select('id, name, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(300),
+    supabaseAdmin.from('resource_requirements').select('id, requirement_label, quantity, is_hard_requirement, description, resource_assets(name), resource_types(name)').eq('company_id', auth.membership.companyId).eq('owner_type', 'project').eq('owner_id', id).is('archived_at', null).order('created_at', { ascending: false }),
   ])
 
   if (!project) notFound()
@@ -90,6 +94,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs text-slate-500">Total</p><p className="mt-1 text-2xl font-semibold text-slate-950">{money(project.estimated_total_cost, project.currency)}</p></div>
             </div>
           </section>
+
+          <ResourceRequirementPanel
+            ownerType="project"
+            ownerId={project.id}
+            returnPath={`/projects/${project.id}`}
+            title="Resurser som behövs för projektet"
+            description="Lägg resurser som behövs för hela projektet, till exempel servicebil, maskin, verktyg eller passerkort. Projektets uppdrag ärver detta i planeringen."
+            resourceTypes={resourceTypes ?? []}
+            resources={resources ?? []}
+            requirements={resourceRequirements ?? []}
+          />
 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Arbetsmoment</h2>

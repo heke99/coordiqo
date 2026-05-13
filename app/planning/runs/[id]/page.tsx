@@ -30,19 +30,22 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
   let scoreBreakdown: any[] = []
   let conflicts: any[] = []
   let publications: any[] = []
+  let resourceAssignments: any[] = []
 
   if (draft) {
-    const [itemsResult, candidatesResult, conflictsResult, publicationsResult] = await Promise.all([
+    const [itemsResult, candidatesResult, conflictsResult, publicationsResult, resourceAssignmentsResult] = await Promise.all([
       supabaseAdmin.from('planning_draft_items').select('id, task_id, candidate_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, score, eligible, conflict_level, rejection_reason, explanation, is_locked, metadata, tasks(title, priority, status), staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('sort_order'),
       supabaseAdmin.from('assignment_candidates').select('id, task_id, staff_profile_id, team_id, shift_id, score, eligible, rejection_reason, explanation, metadata, staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('score', { ascending: false }).limit(150),
       supabaseAdmin.from('planning_conflicts').select('id, planning_draft_item_id, task_id, conflict_type, severity, status, message, created_at, staff_profiles(full_name), tasks(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
       supabaseAdmin.from('planning_publications').select('id, status, published_assignment_ids, skipped_count, created_at').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }),
+      supabaseAdmin.from('planning_resource_assignments').select('id, planning_draft_item_id, task_id, resource_asset_id, actual_resource_asset_id, resource_type_id, status, note, resource_assets(name), resource_types(name)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at'),
     ])
 
     items = itemsResult.data ?? []
     candidates = candidatesResult.data ?? []
     conflicts = conflictsResult.data ?? []
     publications = publicationsResult.data ?? []
+    resourceAssignments = resourceAssignmentsResult.data ?? []
 
     const candidateIds = candidates.map((candidate: any) => candidate.id).filter(Boolean)
     if (candidateIds.length) {
@@ -54,6 +57,15 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
         .order('created_at')
       scoreBreakdown = data ?? []
     }
+  }
+
+
+  const resourcesByItem = new Map<string, any[]>()
+  for (const assignment of resourceAssignments ?? []) {
+    if (!assignment.planning_draft_item_id) continue
+    const list = resourcesByItem.get(assignment.planning_draft_item_id) ?? []
+    list.push(assignment)
+    resourcesByItem.set(assignment.planning_draft_item_id, list)
   }
 
   const conflictsByItem = new Map<string, any[]>()
@@ -131,6 +143,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                 <div className="mt-5 space-y-4">
                   {items?.length ? items.map((item: any) => {
                     const itemConflicts = conflictsByItem.get(item.id) ?? []
+                    const itemResources = resourcesByItem.get(item.id) ?? []
                     const itemCandidates = candidatesByTask.get(item.task_id) ?? []
                     const canPublish = item.eligible && item.conflict_level !== 'hard' && item.conflict_level !== 'blocked' && item.status !== 'published'
                     return (
@@ -142,6 +155,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                               <p className="font-semibold text-slate-950">{item.tasks?.title ?? 'Uppdrag'}</p>
                               <p className="mt-1 text-sm text-slate-500">{item.staff_profiles?.full_name ?? item.teams?.name ?? 'Ingen kandidat'} · {item.planned_start_at ? new Date(item.planned_start_at).toLocaleString('sv-SE') : 'start saknas'} – {item.planned_end_at ? new Date(item.planned_end_at).toLocaleString('sv-SE') : 'slut saknas'}</p>
                               <p className="mt-2 text-sm leading-6 text-slate-600">{item.explanation}</p>
+                              {itemResources.length ? <div className="mt-3 flex flex-wrap gap-2">{itemResources.map((assignment: any) => <span key={assignment.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{assignment.resource_assets?.name ?? assignment.resource_types?.name ?? assignment.note ?? 'Resurs'} · {assignment.status}</span>)}</div> : null}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2"><StatusBadge status={item.status} /><StatusBadge status={item.conflict_level} tone={['hard', 'blocked'].includes(item.conflict_level) ? 'danger' : item.conflict_level === 'none' ? 'success' : 'warning'} /><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">score {item.score}</span></div>

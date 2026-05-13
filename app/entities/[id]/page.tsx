@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { EntityForm } from '@/components/entities/entity-form'
+import { ResourceRequirementPanel } from '@/components/resources/resource-requirement-panel'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import {
@@ -36,6 +37,9 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
     { data: documents },
     { data: relations },
     { data: relationTargets },
+    { data: resourceTypes },
+    { data: resources },
+    { data: resourceRequirements },
   ] = await Promise.all([
     supabaseAdmin.from('entities').select('*, entity_types(label_singular, label_plural)').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),
     supabaseAdmin.from('entity_types').select('id, label_singular, label_plural').eq('company_id', auth.membership.companyId).eq('is_active', true).is('archived_at', null).order('sort_order'),
@@ -47,6 +51,9 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
     supabaseAdmin.from('entity_documents').select('id, file_name, storage_path, document_type, status, file_size_bytes, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
     supabaseAdmin.from('entity_relations').select('id, relation_type, child_entity_id, notes, entities!entity_relations_child_entity_id_fkey(name)').eq('company_id', auth.membership.companyId).eq('parent_entity_id', id).is('archived_at', null).order('created_at', { ascending: false }),
     supabaseAdmin.from('entities').select('id, name').eq('company_id', auth.membership.companyId).neq('id', id).is('archived_at', null).order('name').limit(100),
+    supabaseAdmin.from('resource_types').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
+    supabaseAdmin.from('resource_assets').select('id, name, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(300),
+    supabaseAdmin.from('resource_requirements').select('id, requirement_label, quantity, is_hard_requirement, description, resource_assets(name), resource_types(name)').eq('company_id', auth.membership.companyId).eq('owner_type', 'entity').eq('owner_id', id).is('archived_at', null).order('created_at', { ascending: false }),
   ])
   if (!entity) notFound()
 
@@ -64,6 +71,17 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
               submitLabel="Spara ändringar"
             />
           </FormCard>
+
+          <ResourceRequirementPanel
+            ownerType="entity"
+            ownerId={entity.id}
+            returnPath={`/entities/${entity.id}`}
+            title="Resurser som behövs för detta objekt"
+            description="Lägg in resurser som alltid eller ofta behövs för detta objekt, kund, patient, fastighet eller plats. Planeringsmotorn ärver kraven till uppdrag som kopplas hit."
+            resourceTypes={resourceTypes ?? []}
+            resources={resources ?? []}
+            requirements={resourceRequirements ?? []}
+          />
 
           <FormCard title="Ny notering" description="Intern notering kopplad till objektet. Senare kan detta användas i personalvy och portal.">
             <form action={createEntityNoteAction} className="grid gap-4">
