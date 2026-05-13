@@ -18,6 +18,40 @@ function value(formData: FormData, key: string) {
   return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null
 }
 
+class FormActionValidationError extends Error {
+  fieldErrors: Record<string, string>
+
+  constructor(message: string, fieldErrors: Record<string, string | undefined>) {
+    super(message)
+    this.name = 'FormActionValidationError'
+    this.fieldErrors = Object.fromEntries(Object.entries(fieldErrors).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim() !== ''))
+  }
+}
+
+function formDataSnapshot(formData: FormData) {
+  const snapshot: Record<string, string | string[]> = {}
+  for (const [key, raw] of formData.entries()) {
+    if (typeof raw !== 'string') continue
+    const existing = snapshot[key]
+    if (Array.isArray(existing)) existing.push(raw)
+    else if (typeof existing === 'string') snapshot[key] = [existing, raw]
+    else snapshot[key] = raw
+  }
+  return snapshot
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
+function isNextRedirectError(error: unknown) {
+  return typeof error === 'object'
+    && error !== null
+    && 'digest' in error
+    && typeof (error as { digest?: unknown }).digest === 'string'
+    && (error as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+}
+
 function normalizeCode(input: string | null) {
   return input
     ?.trim()
@@ -2593,20 +2627,30 @@ export async function duplicateSystemShiftPresetAction(formData: FormData) {
   redirect(`/availability/presets/${data.id}`)
 }
 
-export async function bulkCreateShiftsAction(formData: FormData) {
+async function bulkCreateShiftsCore(formData: FormData) {
   const auth = await requireMembership('planner', 'att skapa pass i bulk')
   const companyId = auth.membership!.companyId
   const presetId = value(formData, 'preset_id')
   const fromDate = value(formData, 'date_from') ?? value(formData, 'shift_date')
   const toDate = value(formData, 'date_to') ?? fromDate
-  if (!fromDate || !toDate) throw new Error('Datumintervall krävs.')
+  if (!fromDate || !toDate) {
+    throw new FormActionValidationError('Datumintervall krävs.', {
+      date_from: !fromDate ? 'Välj från datum.' : undefined,
+      date_to: !toDate ? 'Välj till datum.' : undefined,
+    })
+  }
 
   const preset = await loadShiftPresetForCompany(companyId, presetId, auth.membership?.industryType ?? null)
   const customName = value(formData, 'custom_name')
   const title = preset?.name ?? customName ?? 'Eget pass'
   const startTime = preset?.start_time ? String(preset.start_time).slice(0, 5) : value(formData, 'start_time')
   const endTime = preset?.end_time ? String(preset.end_time).slice(0, 5) : value(formData, 'end_time')
-  if (!startTime || !endTime) throw new Error('Start- och sluttid krävs.')
+  if (!startTime || !endTime) {
+    throw new FormActionValidationError('Start- och sluttid krävs.', {
+      start_time: !startTime ? 'Ange starttid.' : undefined,
+      end_time: !endTime ? 'Ange sluttid.' : undefined,
+    })
+  }
 
   if (value(formData, 'save_custom_as_preset') === 'true' && !preset && customName) {
     await supabaseAdmin.from('shift_presets').insert({
@@ -2649,7 +2693,7 @@ export async function bulkCreateShiftsAction(formData: FormData) {
       .eq('company_id', companyId)
       .is('archived_at', null)
       .in('primary_team_id', selectedTeamIds)
-    for (const member of memberships ?? []) staffIds.add((member as any).id)
+    for (const member of (memberships ?? []) as Array<{ id: string }>) staffIds.add(member.id)
   }
 
   const targets: Array<{ staffProfileId: string | null; teamId: string | null }> = []
@@ -2657,7 +2701,13 @@ export async function bulkCreateShiftsAction(formData: FormData) {
   if (!targets.length && selectedTeamIds.length) {
     for (const teamId of selectedTeamIds) targets.push({ staffProfileId: null, teamId })
   }
-  if (!targets.length) throw new Error('Välj minst en personal eller ett team.')
+  if (!targets.length) {
+    throw new FormActionValidationError('Välj minst en personal eller ett team.', {
+      staff_profile_ids: 'Välj minst en personal eller ett team.',
+      team_ids: 'Välj minst en personal eller ett team.',
+      targets: 'Välj minst en personal eller ett team innan du skapar pass.',
+    })
+  }
 
   const targetStaffIds = [...staffIds]
   const { data: bulkRun, error: bulkError } = await supabaseAdmin.from('shift_bulk_runs').insert({
@@ -2679,7 +2729,20 @@ export async function bulkCreateShiftsAction(formData: FormData) {
   let created = 0
   let skipped = 0
   let conflicts = 0
-  const itemRows: any[] = []
+  const itemRows: Array<{
+    company_id: string
+    bulk_run_id: string
+    shift_id: string | null
+    staff_profile_id: string | null
+    team_id: string | null
+    shift_date: string
+    starts_at: string
+    ends_at: string
+    status: string
+    conflict_level: string | null
+    conflict_summary: string | null
+    skipped_reason: string | null
+  }> = []
 
   for (const dateString of dateRange(fromDate, toDate)) {
     if (!weekdays.includes(weekdayNumber(dateString))) continue
@@ -2748,6 +2811,33 @@ export async function bulkCreateShiftsAction(formData: FormData) {
   revalidatePath('/availability/presets')
   redirect(`/schedule?bulk_run=${bulkRun.id}`)
 }
+
+export async function bulkCreateShiftsAction(formData: FormData) {
+  await bulkCreateShiftsCore(formData)
+}
+
+export async function bulkCreateShiftsFormAction(_previousState: unknown, formData: FormData) {
+  try {
+    await bulkCreateShiftsCore(formData)
+    return {
+      ok: true,
+      message: 'Pass skapades.',
+      fieldErrors: {},
+      values: formDataSnapshot(formData),
+    }
+  } catch (error) {
+    if (isNextRedirectError(error)) throw error
+
+    const validationError = error instanceof FormActionValidationError ? error : null
+    return {
+      ok: false,
+      message: validationError?.message ?? errorMessage(error, 'Kunde inte skapa pass.'),
+      fieldErrors: validationError?.fieldErrors ?? {},
+      values: formDataSnapshot(formData),
+    }
+  }
+}
+
 
 export async function quickAbsenceAction(formData: FormData) {
   const auth = await requireMembership('planner', 'att skapa snabbfrånvaro')
