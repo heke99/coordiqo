@@ -1,3 +1,4 @@
+
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
@@ -34,7 +35,9 @@ export default async function ResourcesPage({ searchParams }: ResourcesPageProps
   if (!auth.membership) return null
   const params = await searchParams
   const q = params?.q?.trim() ?? ''
-  const status = params?.status ?? 'all'
+  const requestedStatus = params?.status ?? 'all'
+  const validStatuses = new Set(['all', 'available', 'assigned', 'maintenance', 'lost', 'inactive', 'archived'])
+  const status = validStatuses.has(requestedStatus) ? requestedStatus : 'all'
   const todayStart = startOfToday()
   const todayEnd = endOfToday()
 
@@ -82,7 +85,7 @@ export default async function ResourcesPage({ searchParams }: ResourcesPageProps
       <div className="space-y-5">
         <SearchFilter action="/resources" defaultValue={q} placeholder="Sök resurs, tagg eller plats" newHref={canManage ? '/resources/new' : undefined} newLabel="Skapa resurs">
           <select name="status" defaultValue={status} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900">
-            <option value="all">Alla statusar</option><option value="available">Tillgänglig</option><option value="assigned">Tilldelad</option><option value="maintenance">Underhåll</option><option value="inactive">Inaktiv</option>
+            <option value="all">Alla statusar</option><option value="available">Tillgänglig</option><option value="assigned">Tilldelad</option><option value="maintenance">Underhåll</option><option value="lost">Förlorad</option><option value="inactive">Inaktiv</option>
           </select>
         </SearchFilter>
 

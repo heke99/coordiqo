@@ -767,10 +767,25 @@ export async function createExtraResourceUsageAction(formData: FormData) {
   const returnPath = value(formData, 'return_path') ?? '/staff/mobile/resources'
   const comment = value(formData, 'comment')
   const reasonCode = value(formData, 'reason_code') ?? 'extra_resource'
+  const selectedStaffProfileId = value(formData, 'staff_profile_id')
   if (!resourceAssetId) throw new Error('Välj resurs.')
 
   const currentStaff = await staffProfileForCurrentMembership(auth.membership!.companyId, auth.membership!.membershipId)
-  if (!currentStaff) throw new Error('Din användare saknar kopplad personalprofil.')
+  const canAddForOtherStaff = ['company_admin', 'operations_manager', 'planner', 'supervisor', 'dispatcher', 'team_lead'].includes(auth.membership!.companyRole)
+  let effectiveStaffProfile = currentStaff
+
+  if (!effectiveStaffProfile && canAddForOtherStaff && selectedStaffProfileId) {
+    const { data: selectedStaff } = await supabaseAdmin
+      .from('staff_profiles')
+      .select('id, full_name')
+      .eq('id', selectedStaffProfileId)
+      .eq('company_id', auth.membership!.companyId)
+      .is('archived_at', null)
+      .maybeSingle()
+    effectiveStaffProfile = selectedStaff as { id: string; full_name: string | null } | null
+  }
+
+  if (!effectiveStaffProfile) throw new Error('Välj personal, eller koppla din användare till en personalprofil.')
 
   const now = new Date()
   const start = value(formData, 'planned_start_at') ?? now.toISOString()
@@ -793,7 +808,7 @@ export async function createExtraResourceUsageAction(formData: FormData) {
       resource_asset_id: resourceAssetId,
       actual_resource_asset_id: resourceAssetId,
       resource_type_id: (asset as any).resource_type_id ?? null,
-      planned_staff_profile_id: currentStaff.id,
+      planned_staff_profile_id: effectiveStaffProfile.id,
       planned_start_at: start,
       planned_end_at: end,
       assignment_kind: 'extra',
@@ -815,7 +830,7 @@ export async function createExtraResourceUsageAction(formData: FormData) {
     actual_resource_asset_id: resourceAssetId,
     event_type: 'extra_added',
     performed_by_user_id: auth.userId,
-    staff_profile_id: currentStaff.id,
+    staff_profile_id: effectiveStaffProfile.id,
     task_id: taskId,
     reason_code: reasonCode,
     comment,
@@ -823,7 +838,7 @@ export async function createExtraResourceUsageAction(formData: FormData) {
   })
   if (eventError) throw new Error(eventError.message)
 
-  await audit(auth.membership!.companyId, auth.userId, 'extra_added', 'planning_resource_assignment', row.id, { resourceAssetId, taskId })
+  await audit(auth.membership!.companyId, auth.userId, 'extra_added', 'planning_resource_assignment', row.id, { resourceAssetId, taskId, staffProfileId: effectiveStaffProfile.id })
   revalidatePath(returnPath)
   revalidatePath('/resources')
 }
