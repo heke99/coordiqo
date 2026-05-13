@@ -171,7 +171,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
 
     let taskQuery = supabaseAdmin
       .from('tasks')
-      .select('id, company_id, task_type_id, entity_id, assigned_team_id, assigned_staff_id, title, priority, status, time_window_start, time_window_end, scheduled_start, scheduled_end, estimated_duration_minutes, sla_due_at')
+      .select('id, company_id, task_type_id, entity_id, assigned_team_id, assigned_staff_id, title, priority, status, time_window_start, time_window_end, scheduled_start, scheduled_end, estimated_duration_minutes, sla_due_at, project_id, project_phase_id, project_work_item_id')
       .eq('company_id', input.companyId)
       .is('archived_at', null)
       .limit(100)
@@ -180,6 +180,9 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
     if (input.teamId) taskQuery = taskQuery.eq('assigned_team_id', input.teamId)
     if (input.staffProfileId) taskQuery = taskQuery.eq('assigned_staff_id', input.staffProfileId)
     if (input.taskTypeId) taskQuery = taskQuery.eq('task_type_id', input.taskTypeId)
+    if (input.projectId) taskQuery = taskQuery.eq('project_id', input.projectId)
+    if (input.projectPhaseId) taskQuery = taskQuery.eq('project_phase_id', input.projectPhaseId)
+    if (input.projectWorkItemId) taskQuery = taskQuery.eq('project_work_item_id', input.projectWorkItemId)
 
     const [{ data: taskRows, error: tasksError }, { data: staffRows }, { data: shiftRows }, { data: requirementRows }, { data: skillRows }, { data: certRows }, { data: absenceRows }, { data: assignmentRows }, { data: continuityRows }] = await Promise.all([
       taskQuery,

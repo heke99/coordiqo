@@ -36,7 +36,7 @@ export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
   const { data: items, error: itemError } = await itemQuery
   if (itemError) throw new Error(itemError.message)
 
-  const publishableItems = (items ?? []).filter((item: any) => item.eligible && item.staff_profile_id && item.planned_start_at && item.planned_end_at && item.conflict_level !== 'hard' && item.conflict_level !== 'blocked')
+  const publishableItems = (items ?? []).filter((item: any) => item.eligible && (item.staff_profile_id || item.team_id) && item.planned_start_at && item.planned_end_at && item.conflict_level !== 'hard' && item.conflict_level !== 'blocked')
   const skippedCount = (items ?? []).length - publishableItems.length
   const assignmentIds: string[] = []
   const touchedShiftIds = new Set<string>()

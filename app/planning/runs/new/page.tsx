@@ -12,23 +12,30 @@ export default async function NewPlanningRunPage() {
   const auth = await requireAuth()
   if (!auth.membership) return null
 
-  const [{ data: teams }, { data: staff }, { data: taskTypes }] = await Promise.all([
+  const [{ data: teams }, { data: staff }, { data: taskTypes }, { data: projects }] = await Promise.all([
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).eq('status', 'active').is('archived_at', null).order('full_name'),
     supabaseAdmin.from('task_types').select('id, name').eq('company_id', auth.membership.companyId).eq('is_active', true).is('archived_at', null).order('name'),
+    supabaseAdmin.from('projects').select('id, name, status').eq('company_id', auth.membership.companyId).in('status', ['draft', 'estimating', 'planned', 'active', 'paused']).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
   ])
 
   const today = new Date().toISOString().slice(0, 10)
 
   return (
-    <AppShell auth={auth} title="Ny planeringskörning" subtitle="Skapa ett utkast. Motorn publicerar aldrig direkt." actions={<Link href="/planning" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link>}>
-      <FormCard title="Körningsfilter" description="Välj period, team/person och om endast oschemalagda uppdrag ska tas med.">
+    <AppShell
+      auth={auth}
+      title="Ny planeringskörning"
+      subtitle="Skapa ett utkast från uppdrag, projekt eller ett vanligt filter. Motorn publicerar aldrig direkt."
+      actions={<Link href="/planning" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link>}
+    >
+      <FormCard title="Körningsfilter" description="Välj period, projekt, team/person och om endast oschemalagda uppdrag ska tas med.">
         <form action={createPlanningRunAction} className="grid gap-5">
           <Field label="Namn"><input name="name" className={inputClassName} placeholder="Ex. Morgonplanering område A" /></Field>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Från datum"><input name="date_from" type="date" required defaultValue={today} className={inputClassName} /></Field>
             <Field label="Till datum"><input name="date_to" type="date" required defaultValue={today} className={inputClassName} /></Field>
           </div>
+          <Field label="Projekt"><select name="project_id" className={selectClassName}><option value="">Ingen projektfiltrering</option>{projects?.map((project: any) => <option key={project.id} value={project.id}>{project.name} · {project.status}</option>)}</select></Field>
           <div className="grid gap-4 md:grid-cols-3">
             <Field label="Team"><select name="team_id" className={selectClassName}><option value="">Alla team</option>{teams?.map((team: any) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></Field>
             <Field label="Personal"><select name="staff_profile_id" className={selectClassName}><option value="">All personal</option>{staff?.map((person: any) => <option key={person.id} value={person.id}>{person.full_name}</option>)}</select></Field>

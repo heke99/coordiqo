@@ -17,6 +17,9 @@ export type PlanningTask = {
   scheduled_end?: string | null
   estimated_duration_minutes?: number | null
   sla_due_at?: string | null
+  project_id?: string | null
+  project_phase_id?: string | null
+  project_work_item_id?: string | null
 }
 
 export type PlanningStaff = {

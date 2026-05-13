@@ -7,16 +7,8 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
-import { publishPlanningDraftAction, resolvePlanningConflictAction, updatePlanningDraftItemAction } from '@/lib/platform/actions'
+import { publishPlanningDraftAction, resolvePlanningConflictAction, savePlanningDraftAsTemplateAction, updatePlanningDraftItemAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-
-function datetimeLocal(value: string | null | undefined) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const offset = date.getTimezoneOffset() * 60000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
-}
 
 export default async function PlanningRunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth()
@@ -75,6 +67,11 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
         </section>
 
         {draft ? (
+          <>
+          <form id="save-template-form" action={savePlanningDraftAsTemplateAction} className="hidden">
+            <input type="hidden" name="draft_id" value={draft.id} />
+            <input type="hidden" name="template_type" value="operational" />
+          </form>
           <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
             <section className="space-y-5">
               <form action={publishPlanningDraftAction} className="coordiqo-card p-5">
@@ -87,6 +84,16 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                   <div className="flex flex-wrap gap-2">
                     <select name="lock_assignments" defaultValue="false" className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800"><option value="false">Lås inte</option><option value="true">Lås publicerade</option></select>
                     <button className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Publicera valda</button>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-950">Spara som planeringsmall</p>
+                  <p className="mt-1 text-xs text-slate-500">Batch 8C: återanvänd samma uppdrag, tider, personal/team och ordning som ett nytt utkast senare.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                    <input form="save-template-form" name="name" className={inputClassName} placeholder={`Mall · ${run.name}`} />
+                    <input form="save-template-form" name="description" className={inputClassName} placeholder="Kort beskrivning" />
+                    <button form="save-template-form" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800">Spara mall</button>
                   </div>
                 </div>
 
@@ -164,6 +171,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
               </section>
             </aside>
           </div>
+          </>
         ) : (
           <section className="coordiqo-card p-5"><p className="text-sm text-slate-600">Ingen draft kopplad till denna körning.</p></section>
         )}

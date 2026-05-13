@@ -1606,6 +1606,11 @@ export async function createPlanningRunAction(formData: FormData) {
     areaLabel: value(formData, 'area_label'),
     unscheduledOnly: value(formData, 'unscheduled_only') !== 'false',
     includeLockedAssignments: value(formData, 'include_locked_assignments') !== 'false',
+    sourceType: value(formData, 'project_id') ? 'project' : 'planning_run',
+    sourceId: value(formData, 'project_id'),
+    projectId: value(formData, 'project_id'),
+    projectPhaseId: value(formData, 'project_phase_id'),
+    projectWorkItemId: value(formData, 'project_work_item_id'),
   })
 
   await audit(auth.membership!.companyId, auth.userId, 'create', 'planning_run', result.runId, result)
@@ -1698,6 +1703,664 @@ export async function resolvePlanningConflictAction(formData: FormData) {
   await audit(auth.membership!.companyId, auth.userId, 'resolve', 'planning_conflict', conflictId, { resolutionType })
   revalidatePath('/planning')
   revalidatePath('/planning/runs')
+}
+
+
+function numberFromForm(formData: FormData, key: string, fallback = 0) {
+  const raw = value(formData, key)
+  if (!raw) return fallback
+  const normalized = Number(raw.replace(',', '.'))
+  return Number.isFinite(normalized) ? normalized : fallback
+}
+
+function integerFromForm(formData: FormData, key: string, fallback = 0) {
+  return Math.max(0, Math.round(numberFromForm(formData, key, fallback)))
+}
+
+function addDaysIsoDate(date: string, days: number) {
+  const cursor = new Date(`${date}T00:00:00Z`)
+  cursor.setUTCDate(cursor.getUTCDate() + days)
+  return cursor.toISOString().slice(0, 10)
+}
+
+function toTimeOnly(value: string | null | undefined, fallback = '08:00') {
+  return normalizeTimePart(value ?? null) ?? fallback
+}
+
+function minutesFromRange(start: string | null, end: string | null, fallback = 60) {
+  if (!start || !end) return fallback
+  const diff = new Date(end).getTime() - new Date(start).getTime()
+  return Number.isFinite(diff) && diff > 0 ? Math.max(1, Math.round(diff / 60000)) : fallback
+}
+
+async function findShiftForPlanningItem(params: {
+  companyId: string
+  staffProfileId: string | null
+  teamId: string | null
+  plannedStartAt: string
+  plannedEndAt: string
+}) {
+  if (!params.staffProfileId && !params.teamId) return null
+
+  let query = supabaseAdmin
+    .from('shifts')
+    .select('id, starts_at, ends_at')
+    .eq('company_id', params.companyId)
+    .is('archived_at', null)
+    .lte('starts_at', params.plannedStartAt)
+    .gte('ends_at', params.plannedEndAt)
+    .order('starts_at')
+    .limit(1)
+
+  if (params.staffProfileId) query = query.eq('staff_profile_id', params.staffProfileId)
+  else if (params.teamId) query = query.eq('team_id', params.teamId)
+
+  const { data } = await query.maybeSingle()
+  return data?.id ?? null
+}
+
+export async function savePlanningDraftAsTemplateAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att spara planeringsmall')
+  const draftId = value(formData, 'draft_id')
+  const name = value(formData, 'name')
+  if (!draftId || !name) throw new Error('Draft och mallnamn krävs.')
+
+  const { data: draft } = await supabaseAdmin
+    .from('planning_drafts')
+    .select('*')
+    .eq('id', draftId)
+    .eq('company_id', auth.membership!.companyId)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (!draft) throw new Error('Planeringsutkastet kunde inte hittas.')
+
+  const { data: existing } = await supabaseAdmin
+    .from('planning_templates')
+    .select('id')
+    .eq('company_id', auth.membership!.companyId)
+    .ilike('name', name)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (existing) throw new Error('Det finns redan en planeringsmall med detta namn.')
+
+  const { data: items, error: itemError } = await supabaseAdmin
+    .from('planning_draft_items')
+    .select('*, tasks(id, task_type_id, entity_id, title, description, instructions, priority, estimated_duration_minutes)')
+    .eq('planning_draft_id', draftId)
+    .eq('company_id', auth.membership!.companyId)
+    .is('archived_at', null)
+    .order('sort_order')
+  if (itemError) throw new Error(itemError.message)
+  if (!items?.length) throw new Error('Utkastet saknar rader att spara som mall.')
+
+  const firstDate = draft.date_from ? String(draft.date_from) : new Date().toISOString().slice(0, 10)
+  const lastDate = draft.date_to ? String(draft.date_to) : firstDate
+  const spanDays = Math.max(1, Math.round((new Date(`${lastDate}T00:00:00Z`).getTime() - new Date(`${firstDate}T00:00:00Z`).getTime()) / 86400000) + 1)
+
+  const { data: template, error: templateError } = await supabaseAdmin
+    .from('planning_templates')
+    .insert({
+      company_id: auth.membership!.companyId,
+      name,
+      description: value(formData, 'description') ?? `Skapad från ${draft.title}`,
+      template_type: value(formData, 'template_type') ?? 'operational',
+      status: 'active',
+      industry_type: auth.membership?.industryType ?? null,
+      operational_model: auth.membership?.operationalModel ?? null,
+      default_date_span_days: spanDays,
+      default_team_id: draft.team_id ?? null,
+      default_staff_profile_id: draft.staff_profile_id ?? null,
+      source_planning_draft_id: draft.id,
+      settings: { source: 'planning_draft', sourceTitle: draft.title, itemCount: items.length },
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (templateError) throw new Error(templateError.message)
+
+  const templateRows = (items as any[]).map((item, index) => {
+    const task = item.tasks ?? {}
+    const plannedStart = item.planned_start_at ? new Date(item.planned_start_at) : null
+    const itemDate = plannedStart ? plannedStart.toISOString().slice(0, 10) : firstDate
+    const offsetDays = Math.max(0, Math.round((new Date(`${itemDate}T00:00:00Z`).getTime() - new Date(`${firstDate}T00:00:00Z`).getTime()) / 86400000))
+    return {
+      company_id: auth.membership!.companyId,
+      planning_template_id: template.id,
+      source_planning_draft_item_id: item.id,
+      task_id: item.task_id,
+      task_type_id: task.task_type_id ?? null,
+      entity_id: task.entity_id ?? null,
+      title: task.title ?? 'Uppdrag',
+      description: task.description ?? null,
+      instructions: task.instructions ?? null,
+      priority: task.priority ?? 'normal',
+      offset_days: offsetDays,
+      start_time: plannedStart ? plannedStart.toISOString().slice(11, 16) : null,
+      duration_minutes: minutesFromRange(item.planned_start_at, item.planned_end_at, Number(task.estimated_duration_minutes ?? 60)),
+      staff_profile_id: item.staff_profile_id ?? null,
+      team_id: item.team_id ?? null,
+      shift_id: item.shift_id ?? null,
+      sort_order: item.sort_order ?? index + 1,
+      metadata: { sourceDraftItemId: item.id, originalScore: item.score ?? null, originalConflictLevel: item.conflict_level ?? null },
+    }
+  })
+
+  const { error: rowsError } = await supabaseAdmin.from('planning_template_items').insert(templateRows)
+  if (rowsError) throw new Error(rowsError.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'planning_template', template.id, { draftId, itemCount: templateRows.length })
+  revalidatePath('/planning')
+  revalidatePath('/planning/templates')
+  redirect(`/planning/templates/${template.id}`)
+}
+
+export async function createPlanningRunFromTemplateAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att använda planeringsmall')
+  const templateId = value(formData, 'template_id')
+  const dateFrom = value(formData, 'date_from')
+  if (!templateId || !dateFrom) throw new Error('Mall och startdatum krävs.')
+
+  const { data: template } = await supabaseAdmin
+    .from('planning_templates')
+    .select('*')
+    .eq('id', templateId)
+    .eq('company_id', auth.membership!.companyId)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (!template) throw new Error('Planeringsmallen kunde inte hittas.')
+
+  const { data: templateItems, error: itemError } = await supabaseAdmin
+    .from('planning_template_items')
+    .select('*')
+    .eq('planning_template_id', template.id)
+    .eq('company_id', auth.membership!.companyId)
+    .is('archived_at', null)
+    .order('sort_order')
+  if (itemError) throw new Error(itemError.message)
+  if (!templateItems?.length) throw new Error('Planeringsmallen saknar rader.')
+
+  const dateTo = addDaysIsoDate(dateFrom, Math.max(1, Number(template.default_date_span_days ?? 1)) - 1)
+  const runName = value(formData, 'name') ?? `${template.name} · ${dateFrom}`
+
+  const { data: run, error: runError } = await supabaseAdmin
+    .from('planning_runs')
+    .insert({
+      company_id: auth.membership!.companyId,
+      name: runName,
+      status: 'completed',
+      planning_date: dateFrom === dateTo ? dateFrom : null,
+      date_from: dateFrom,
+      date_to: dateTo,
+      team_id: template.default_team_id ?? null,
+      staff_profile_id: template.default_staff_profile_id ?? null,
+      industry_type: auth.membership?.industryType ?? null,
+      source_type: 'template',
+      source_id: template.id,
+      filters: { templateId: template.id, dateFrom, dateTo },
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (runError) throw new Error(runError.message)
+
+  const { data: draft, error: draftError } = await supabaseAdmin
+    .from('planning_drafts')
+    .insert({
+      company_id: auth.membership!.companyId,
+      planning_run_id: run.id,
+      title: `Utkast · ${template.name}`,
+      status: 'draft',
+      source_type: 'template',
+      source_id: template.id,
+      date_from: dateFrom,
+      date_to: dateTo,
+      team_id: template.default_team_id ?? null,
+      staff_profile_id: template.default_staff_profile_id ?? null,
+      summary: 'Skapat från återanvändbar planeringsmall. Granska tider, personal och konflikter innan publicering.',
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (draftError) throw new Error(draftError.message)
+
+  const draftItemIds: string[] = []
+  let conflictCount = 0
+  let skippedCount = 0
+
+  for (const item of templateItems as any[]) {
+    if (!item.task_id) {
+      skippedCount += 1
+      continue
+    }
+    const targetDate = addDaysIsoDate(dateFrom, Number(item.offset_days ?? 0))
+    const startTime = toTimeOnly(item.start_time, '08:00')
+    const plannedStartAt = `${targetDate}T${startTime}:00`
+    const plannedEndAt = addMinutesIso(plannedStartAt, Number(item.duration_minutes ?? 60))
+    const staffProfileId = item.staff_profile_id ?? template.default_staff_profile_id ?? null
+    const teamId = item.team_id ?? template.default_team_id ?? null
+    const shiftId = await findShiftForPlanningItem({ companyId: auth.membership!.companyId, staffProfileId, teamId, plannedStartAt, plannedEndAt })
+    const eligible = Boolean((staffProfileId || teamId) && plannedStartAt && plannedEndAt)
+    const hasWarning = !shiftId && Boolean(staffProfileId)
+    if (hasWarning) conflictCount += 1
+
+    const { data: draftItem, error: draftItemError } = await supabaseAdmin
+      .from('planning_draft_items')
+      .insert({
+        company_id: auth.membership!.companyId,
+        planning_draft_id: draft.id,
+        planning_run_id: run.id,
+        task_id: item.task_id,
+        staff_profile_id: staffProfileId,
+        team_id: teamId,
+        shift_id: shiftId,
+        planned_start_at: plannedStartAt,
+        planned_end_at: plannedEndAt,
+        status: 'proposed',
+        score: eligible ? 50 : 0,
+        eligible,
+        conflict_level: eligible ? (hasWarning ? 'warning' : 'none') : 'hard',
+        rejection_reason: eligible ? null : 'Mallen saknar personal/team för denna rad.',
+        explanation: eligible ? 'Rad skapad från planeringsmall.' : 'Rad kunde inte göras publicerbar eftersom personal/team saknas.',
+        source_type: 'template',
+        source_id: template.id,
+        metadata: { templateItemId: item.id, copiedFromTemplate: true, shiftMatched: Boolean(shiftId) },
+        sort_order: item.sort_order ?? 100,
+      })
+      .select('id')
+      .single()
+    if (draftItemError) throw new Error(draftItemError.message)
+    draftItemIds.push(draftItem.id)
+
+    if (hasWarning) {
+      const { error: conflictError } = await supabaseAdmin.from('planning_conflicts').insert({
+        company_id: auth.membership!.companyId,
+        planning_run_id: run.id,
+        planning_draft_id: draft.id,
+        planning_draft_item_id: draftItem.id,
+        task_id: item.task_id,
+        staff_profile_id: staffProfileId,
+        team_id: teamId,
+        shift_id: shiftId,
+        conflict_type: 'template_shift_missing',
+        severity: 'warning',
+        status: 'open',
+        message: 'Mallen hittade inget pass som täcker den planerade tiden. Kontrollera schema innan publicering.',
+        details: { templateItemId: item.id, plannedStartAt, plannedEndAt },
+      })
+      if (conflictError) throw new Error(conflictError.message)
+    }
+  }
+
+  await supabaseAdmin.from('planning_drafts').update({
+    summary_json: { draftItems: draftItemIds.length, skipped: skippedCount, source: 'planning_template' },
+    conflict_summary: { warning: conflictCount },
+  }).eq('id', draft.id).eq('company_id', auth.membership!.companyId)
+
+  await supabaseAdmin.from('planning_runs').update({
+    summary: { draftItems: draftItemIds.length, skipped: skippedCount, warningConflicts: conflictCount, draftId: draft.id, source: 'planning_template' },
+  }).eq('id', run.id).eq('company_id', auth.membership!.companyId)
+
+  const { error: appError } = await supabaseAdmin.from('planning_template_applications').insert({
+    company_id: auth.membership!.companyId,
+    planning_template_id: template.id,
+    planning_run_id: run.id,
+    planning_draft_id: draft.id,
+    applied_date_from: dateFrom,
+    applied_date_to: dateTo,
+    status: skippedCount > 0 ? 'partial' : 'completed',
+    created_draft_item_ids: draftItemIds,
+    skipped_count: skippedCount,
+    conflict_count: conflictCount,
+    summary: { runId: run.id, draftId: draft.id, itemCount: draftItemIds.length },
+    applied_by: auth.userId,
+  })
+  if (appError) throw new Error(appError.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'apply', 'planning_template', template.id, { runId: run.id, draftId: draft.id })
+  revalidatePath('/planning')
+  revalidatePath('/planning/templates')
+  redirect(`/planning/runs/${run.id}`)
+}
+
+function projectDriverQuantity(rule: any, answers: Record<string, number>) {
+  const source = rule.quantity_source ?? 'fixed'
+  if (source === 'square_meters') return answers.square_meters || 0
+  if (source === 'rooms') return answers.rooms || 0
+  if (source === 'windows') return answers.windows || 0
+  if (source === 'doors') return answers.doors || 0
+  if (source === 'workers') return answers.planned_workers || 1
+  if (source === 'custom_number') return answers[rule.driver_key] || 0
+  return 1
+}
+
+function phaseNameFromKey(key: string) {
+  if (key === 'planning') return 'Planering'
+  if (key === 'demolition') return 'Rivning/förarbete'
+  if (key === 'build') return 'Utförande'
+  if (key === 'finish') return 'Slutkontroll'
+  if (key === 'execution') return 'Utförande'
+  if (key === 'followup') return 'Uppföljning'
+  return key.replace(/_/g, ' ')
+}
+
+function parseJsonArrayFromForm(formData: FormData, key: string) {
+  const raw = value(formData, key)
+  if (!raw) return [] as any[]
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error('not_array')
+    return parsed as any[]
+  } catch {
+    throw new Error(`${key} måste vara giltig JSON-array.`)
+  }
+}
+
+export async function createProjectTemplateAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skapa projektmall')
+  const name = value(formData, 'name')
+  if (!name) throw new Error('Mallnamn krävs.')
+
+  const phaseModel = parseJsonArrayFromForm(formData, 'default_phase_model_json')
+  const questions = parseJsonArrayFromForm(formData, 'questions_json')
+  const rules = parseJsonArrayFromForm(formData, 'rules_json')
+  const industryType = value(formData, 'industry_type') ?? auth.membership?.industryType ?? null
+
+  const { data: template, error: templateError } = await supabaseAdmin
+    .from('project_templates')
+    .insert({
+      company_id: auth.membership!.companyId,
+      scope: 'company',
+      industry_type: industryType,
+      project_type: value(formData, 'project_type') ?? 'custom',
+      name,
+      description: value(formData, 'description'),
+      status: 'active',
+      default_phase_model: phaseModel.length ? phaseModel : [
+        { key: 'planning', name: 'Planering' },
+        { key: 'execution', name: 'Utförande' },
+        { key: 'followup', name: 'Uppföljning' },
+      ],
+      intake_schema: questions,
+      assumptions: {
+        labor_rate_per_hour: numberFromForm(formData, 'labor_rate_per_hour', 550),
+        currency: value(formData, 'currency') ?? 'SEK',
+        source: 'company_template',
+      },
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (templateError) throw new Error(templateError.message)
+
+  const questionRows = questions.map((question, index) => ({
+    company_id: auth.membership!.companyId,
+    project_template_id: template.id,
+    question_key: String(question.key ?? question.question_key ?? `question_${index + 1}`),
+    label: String(question.label ?? question.name ?? `Fråga ${index + 1}`),
+    help_text: question.help_text ?? question.helpText ?? null,
+    input_type: question.type ?? question.input_type ?? 'text',
+    unit_label: question.unit_label ?? question.unit ?? null,
+    options: Array.isArray(question.options) ? question.options : [],
+    is_required: Boolean(question.required ?? question.is_required ?? false),
+    default_value: question.default_value ?? null,
+    sort_order: Number(question.sort_order ?? (index + 1) * 10),
+  }))
+  if (questionRows.length) {
+    const { error: questionError } = await supabaseAdmin.from('project_template_questions').insert(questionRows)
+    if (questionError) throw new Error(questionError.message)
+  }
+
+  const ruleRows = rules.map((rule, index) => ({
+    company_id: auth.membership!.companyId,
+    project_template_id: template.id,
+    scope: 'company',
+    industry_type: industryType,
+    rule_key: String(rule.rule_key ?? rule.key ?? `rule_${index + 1}`),
+    phase_key: String(rule.phase_key ?? rule.phase ?? 'execution'),
+    work_item_title: String(rule.work_item_title ?? rule.title ?? `Arbetsmoment ${index + 1}`),
+    driver_key: String(rule.driver_key ?? rule.quantity_source ?? 'fixed'),
+    quantity_source: String(rule.quantity_source ?? 'fixed'),
+    quantity_multiplier: Number(rule.quantity_multiplier ?? 1),
+    minutes_per_unit: Number(rule.minutes_per_unit ?? 60),
+    minimum_minutes: Number(rule.minimum_minutes ?? 0),
+    material_cost_per_unit: Number(rule.material_cost_per_unit ?? 0),
+    fixed_cost: Number(rule.fixed_cost ?? 0),
+    applies_when: rule.applies_when ?? {},
+    metadata: rule.metadata ?? {},
+    is_active: rule.is_active !== false,
+    created_by: auth.userId,
+  }))
+  if (ruleRows.length) {
+    const { error: ruleError } = await supabaseAdmin.from('project_estimation_rules').insert(ruleRows)
+    if (ruleError) throw new Error(ruleError.message)
+  }
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'project_template', template.id, { questions: questionRows.length, rules: ruleRows.length })
+  revalidatePath('/projects')
+  revalidatePath('/projects/templates')
+  redirect('/projects/templates')
+}
+
+export async function createProjectAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa projekt')
+  const name = value(formData, 'name')
+  if (!name) throw new Error('Projektnamn krävs.')
+
+  const templateId = value(formData, 'project_template_id')
+  const plannedWorkers = Math.max(1, integerFromForm(formData, 'planned_workers', 1))
+  const numericAnswers: Record<string, number> = {
+    square_meters: numberFromForm(formData, 'square_meters', 0),
+    rooms: numberFromForm(formData, 'rooms', 0),
+    windows: numberFromForm(formData, 'windows', 0),
+    doors: numberFromForm(formData, 'doors', 0),
+    estimated_hours: numberFromForm(formData, 'estimated_hours', 0),
+    planned_workers: plannedWorkers,
+  }
+  const scope = value(formData, 'scope') ?? value(formData, 'project_scope') ?? 'custom'
+
+  const { data: template } = templateId
+    ? await supabaseAdmin
+        .from('project_templates')
+        .select('*')
+        .eq('id', templateId)
+        .or(`scope.eq.system,company_id.eq.${auth.membership!.companyId}`)
+        .is('archived_at', null)
+        .maybeSingle()
+    : { data: null }
+
+  const { data: project, error: projectError } = await supabaseAdmin
+    .from('projects')
+    .insert({
+      company_id: auth.membership!.companyId,
+      project_template_id: template?.id ?? null,
+      entity_id: value(formData, 'entity_id'),
+      project_code: value(formData, 'project_code'),
+      name,
+      description: value(formData, 'description'),
+      project_type: template?.project_type ?? value(formData, 'project_type') ?? 'custom',
+      status: 'estimating',
+      priority: value(formData, 'priority') ?? 'normal',
+      target_start_date: value(formData, 'target_start_date'),
+      deadline_date: value(formData, 'deadline_date'),
+      default_team_id: value(formData, 'default_team_id'),
+      default_staff_profile_id: value(formData, 'default_staff_profile_id'),
+      planned_workers: plannedWorkers,
+      budget_amount: value(formData, 'budget_amount') ? numberFromForm(formData, 'budget_amount') : null,
+      currency: value(formData, 'currency') ?? 'SEK',
+      intake_summary: { ...numericAnswers, scope, notes: value(formData, 'intake_notes') },
+      calculation_summary: { status: 'pending', source: 'db_estimation_rules' },
+      ai_assist_status: value(formData, 'ai_assist_status') ?? 'not_used',
+      ai_assist_summary: { note: value(formData, 'ai_assist_note') },
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (projectError) throw new Error(projectError.message)
+
+  const answerRows = Object.entries(numericAnswers).map(([questionKey, answerNumber]) => ({
+    company_id: auth.membership!.companyId,
+    project_id: project.id,
+    question_key: questionKey,
+    answer_number: answerNumber,
+    source: 'manual',
+  }))
+  answerRows.push({
+    company_id: auth.membership!.companyId,
+    project_id: project.id,
+    question_key: 'scope',
+    answer_number: 0,
+    answer_text: scope,
+    source: 'manual',
+  } as any)
+  const { error: answersError } = await supabaseAdmin.from('project_intake_answers').insert(answerRows)
+  if (answersError) throw new Error(answersError.message)
+
+  let rulesQuery = supabaseAdmin
+    .from('project_estimation_rules')
+    .select('*')
+    .eq('is_active', true)
+    .is('archived_at', null)
+    .order('phase_key')
+    .order('rule_key')
+
+  if (template?.id) {
+    rulesQuery = rulesQuery.or(`project_template_id.eq.${template.id},and(scope.eq.system,project_template_id.is.null)`)
+  } else {
+    rulesQuery = rulesQuery.or(`company_id.eq.${auth.membership!.companyId},scope.eq.system`)
+  }
+
+  const { data: rules, error: rulesError } = await rulesQuery
+  if (rulesError) throw new Error(rulesError.message)
+
+  const effectiveRules = (rules ?? []) as any[]
+  const fallbackHours = Math.max(1, numericAnswers.estimated_hours || 8)
+  const workPlan = effectiveRules.length ? effectiveRules.map((rule, index) => {
+    const quantity = Math.max(0, projectDriverQuantity(rule, numericAnswers) * Number(rule.quantity_multiplier ?? 1))
+    const effort = Math.max(Number(rule.minimum_minutes ?? 0), Math.round(quantity * Number(rule.minutes_per_unit ?? 60)))
+    const materialCost = quantity * Number(rule.material_cost_per_unit ?? 0) + Number(rule.fixed_cost ?? 0)
+    return { rule, sortOrder: index + 1, phaseKey: rule.phase_key ?? 'general', quantity, effort, calendar: Math.max(1, Math.ceil(effort / plannedWorkers)), materialCost, totalCost: materialCost }
+  }).filter((row) => row.effort > 0 || row.materialCost > 0) : [{
+    rule: null,
+    sortOrder: 1,
+    phaseKey: 'execution',
+    quantity: 1,
+    effort: Math.round(fallbackHours * 60),
+    calendar: Math.max(1, Math.ceil((fallbackHours * 60) / plannedWorkers)),
+    materialCost: 0,
+    totalCost: 0,
+  }]
+
+  const phaseKeys = Array.from(new Set(workPlan.map((row) => row.phaseKey)))
+  const phaseIds = new Map<string, string>()
+  let totalEffort = 0
+  let totalMaterial = 0
+
+  for (const [index, phaseKey] of phaseKeys.entries()) {
+    const rows = workPlan.filter((row) => row.phaseKey === phaseKey)
+    const phaseEffort = rows.reduce((sum, row) => sum + row.effort, 0)
+    const phaseCalendar = Math.max(1, Math.ceil(phaseEffort / plannedWorkers))
+    const phaseCost = rows.reduce((sum, row) => sum + row.totalCost, 0)
+    const { data: phase, error: phaseError } = await supabaseAdmin.from('project_phases').insert({
+      company_id: auth.membership!.companyId,
+      project_id: project.id,
+      phase_key: phaseKey,
+      name: phaseNameFromKey(phaseKey),
+      status: 'planned',
+      sort_order: (index + 1) * 10,
+      planned_start_date: value(formData, 'target_start_date'),
+      estimated_effort_minutes: phaseEffort,
+      estimated_calendar_minutes: phaseCalendar,
+      estimated_cost: phaseCost,
+    }).select('id').single()
+    if (phaseError) throw new Error(phaseError.message)
+    phaseIds.set(phaseKey, phase.id)
+  }
+
+  const createdTaskIds: string[] = []
+  for (const row of workPlan) {
+    totalEffort += row.effort
+    totalMaterial += row.materialCost
+    const phaseId = phaseIds.get(row.phaseKey) ?? null
+    const title = row.rule?.work_item_title ?? 'Projektarbete'
+    const { data: workItem, error: workItemError } = await supabaseAdmin.from('project_work_items').insert({
+      company_id: auth.membership!.companyId,
+      project_id: project.id,
+      project_phase_id: phaseId,
+      source_estimation_rule_id: row.rule?.id ?? null,
+      title,
+      description: value(formData, 'description'),
+      status: 'planned',
+      quantity: row.quantity || 1,
+      unit_label: row.rule?.metadata?.unit ?? row.rule?.driver_key ?? null,
+      estimated_effort_minutes: row.effort,
+      estimated_calendar_minutes: row.calendar,
+      estimated_material_cost: row.materialCost,
+      estimated_total_cost: row.totalCost,
+      sort_order: row.sortOrder,
+      metadata: { source: 'db_estimation_rule', ruleKey: row.rule?.rule_key ?? null, plannedWorkers },
+    }).select('id').single()
+    if (workItemError) throw new Error(workItemError.message)
+
+    if (value(formData, 'create_tasks') !== 'false') {
+      const { data: task, error: taskError } = await supabaseAdmin.from('tasks').insert({
+        company_id: auth.membership!.companyId,
+        entity_id: value(formData, 'entity_id'),
+        assigned_team_id: value(formData, 'default_team_id'),
+        assigned_staff_id: value(formData, 'default_staff_profile_id'),
+        title,
+        description: `Projekt: ${name}`,
+        instructions: value(formData, 'description'),
+        priority: value(formData, 'priority') ?? 'normal',
+        status: 'unscheduled',
+        estimated_duration_minutes: Math.max(1, row.calendar),
+        project_id: project.id,
+        project_phase_id: phaseId,
+        project_work_item_id: workItem.id,
+        source_type: 'project',
+        source_id: project.id,
+        custom_fields: { projectId: project.id, phaseKey: row.phaseKey, quantity: row.quantity, effortMinutes: row.effort },
+        created_by: auth.userId,
+        updated_by: auth.userId,
+      }).select('id').single()
+      if (taskError) throw new Error(taskError.message)
+      createdTaskIds.push(task.id)
+      await supabaseAdmin.from('project_work_items').update({ task_id: task.id }).eq('id', workItem.id).eq('company_id', auth.membership!.companyId)
+    }
+  }
+
+  const laborRate = Number(template?.assumptions?.labor_rate_per_hour ?? 550)
+  const laborCost = Math.round((totalEffort / 60) * laborRate)
+  const estimatedTotalCost = laborCost + totalMaterial
+  const { error: updateProjectError } = await supabaseAdmin.from('projects').update({
+    status: 'planned',
+    estimated_effort_minutes: totalEffort,
+    estimated_calendar_minutes: Math.max(1, Math.ceil(totalEffort / plannedWorkers)),
+    estimated_labor_cost: laborCost,
+    estimated_material_cost: totalMaterial,
+    estimated_total_cost: estimatedTotalCost,
+    calculation_summary: {
+      source: 'db_estimation_rules',
+      rulesApplied: workPlan.length,
+      plannedWorkers,
+      laborRate,
+      createdTasks: createdTaskIds.length,
+      scope,
+    },
+    updated_by: auth.userId,
+  }).eq('id', project.id).eq('company_id', auth.membership!.companyId)
+  if (updateProjectError) throw new Error(updateProjectError.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'project', project.id, { createdTasks: createdTaskIds.length, rulesApplied: workPlan.length })
+  revalidatePath('/projects')
+  revalidatePath('/tasks')
+  redirect(`/projects/${project.id}`)
 }
 
 export async function switchActiveCompanyAction(formData: FormData) {
@@ -2761,6 +3424,20 @@ async function bulkCreateShiftsCore(formData: FormData) {
   const status = statusForBulk(value(formData, 'status') ?? preset?.default_status ?? null) ?? 'draft'
 
   const staffIds = new Set(selectedStaffIds)
+  const staffTeamById = new Map<string, string | null>()
+
+  if (selectedStaffIds.length) {
+    const { data: selectedStaff } = await supabaseAdmin
+      .from('staff_profiles')
+      .select('id, primary_team_id')
+      .eq('company_id', companyId)
+      .is('archived_at', null)
+      .in('id', selectedStaffIds)
+    for (const member of (selectedStaff ?? []) as Array<{ id: string; primary_team_id: string | null }>) {
+      staffTeamById.set(member.id, member.primary_team_id ?? null)
+    }
+  }
+
   if (includeTeamMembers && selectedTeamIds.length) {
     const { data: memberships } = await supabaseAdmin
       .from('staff_profiles')
@@ -2768,11 +3445,18 @@ async function bulkCreateShiftsCore(formData: FormData) {
       .eq('company_id', companyId)
       .is('archived_at', null)
       .in('primary_team_id', selectedTeamIds)
-    for (const member of (memberships ?? []) as Array<{ id: string }>) staffIds.add(member.id)
+    for (const member of (memberships ?? []) as Array<{ id: string; primary_team_id: string | null }>) {
+      staffIds.add(member.id)
+      staffTeamById.set(member.id, member.primary_team_id ?? null)
+    }
   }
 
   const targets: Array<{ staffProfileId: string | null; teamId: string | null }> = []
-  for (const staffId of staffIds) targets.push({ staffProfileId: staffId, teamId: selectedTeamIds[0] ?? preset?.default_team_id ?? null })
+  for (const staffId of staffIds) {
+    const staffTeamId = staffTeamById.get(staffId) ?? null
+    const teamId = staffTeamId && selectedTeamIds.includes(staffTeamId) ? staffTeamId : selectedTeamIds[0] ?? preset?.default_team_id ?? null
+    targets.push({ staffProfileId: staffId, teamId })
+  }
   if (!targets.length && selectedTeamIds.length) {
     for (const teamId of selectedTeamIds) targets.push({ staffProfileId: null, teamId })
   }

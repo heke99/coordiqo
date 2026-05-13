@@ -140,12 +140,12 @@ export function BulkShiftCreateForm({
       </Field>
 
       <Field label="Starttid">
-        <input name="start_time" type="time" defaultValue={stringValue(values, 'start_time', timeLabel(selectedPreset?.start_time))} className={fieldClass(state, 'start_time', inputClassName)} aria-invalid={Boolean(state.fieldErrors?.start_time)} />
+        <input name="start_time" type="time" defaultValue={stringValue(values, 'start_time', timeLabel(selectedPreset?.start_time) || '08:00')} className={fieldClass(state, 'start_time', inputClassName)} aria-invalid={Boolean(state.fieldErrors?.start_time)} />
         {fieldMessage(state, 'start_time')}
       </Field>
 
       <Field label="Sluttid">
-        <input name="end_time" type="time" defaultValue={stringValue(values, 'end_time', timeLabel(selectedPreset?.end_time))} className={fieldClass(state, 'end_time', inputClassName)} aria-invalid={Boolean(state.fieldErrors?.end_time)} />
+        <input name="end_time" type="time" defaultValue={stringValue(values, 'end_time', timeLabel(selectedPreset?.end_time) || '17:00')} className={fieldClass(state, 'end_time', inputClassName)} aria-invalid={Boolean(state.fieldErrors?.end_time)} />
         {fieldMessage(state, 'end_time')}
       </Field>
 
@@ -223,10 +223,10 @@ export function BulkShiftCreateForm({
         </Field>
       </div>
 
-      <Field label="Auto-fyll teammedlemmar">
-        <select name="include_team_members" defaultValue={stringValue(values, 'include_team_members', 'true')} className={selectClassName}>
-          <option value="true">Ja, välj teamets personal</option>
+      <Field label="Auto-fyll teammedlemmar" hint="Standard är nej. Då kan du välja bort personal utan att teamvalet lägger tillbaka dem automatiskt.">
+        <select name="include_team_members" defaultValue={stringValue(values, 'include_team_members', 'false')} className={selectClassName}>
           <option value="false">Nej, skapa teampass eller använd bara valda personal</option>
+          <option value="true">Ja, välj teamets personal automatiskt</option>
         </select>
       </Field>
 

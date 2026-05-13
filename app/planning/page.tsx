@@ -24,8 +24,8 @@ export default async function PlanningPage() {
     <AppShell
       auth={auth}
       title="Planering"
-      subtitle="Batch 8A/8B: planeringskörningar, utkast, kandidater, konflikter och manuell tilldelning."
-      actions={<Link href="/planning/runs/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Ny planeringskörning</Link>}
+      subtitle="Batch 8A–8D: planeringskörningar, återanvändbara mallar, projektkoppling, kandidater och konflikter."
+      actions={<div className="flex gap-2"><Link href="/planning/templates" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Mallar</Link><Link href="/planning/runs/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Ny planeringskörning</Link></div>}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
         <section className="space-y-5">
