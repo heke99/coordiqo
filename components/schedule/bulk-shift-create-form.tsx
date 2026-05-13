@@ -75,6 +75,12 @@ function fieldClass(state: BulkShiftFormState, key: string, baseClassName: strin
   return state.fieldErrors?.[key] ? `${baseClassName} border-red-300 bg-red-50 ring-2 ring-red-100` : baseClassName
 }
 
+function choicePanelClass(state: BulkShiftFormState, key: string) {
+  return state.fieldErrors?.[key]
+    ? 'mt-2 grid max-h-72 gap-2 overflow-y-auto rounded-2xl border border-red-300 bg-red-50 p-3 ring-2 ring-red-100'
+    : 'mt-2 grid max-h-72 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3'
+}
+
 function SubmitButton() {
   const { pending } = useFormStatus()
   return (
@@ -189,17 +195,30 @@ export function BulkShiftCreateForm({
       </Field>
 
       <div className="lg:col-span-3 grid gap-4 lg:grid-cols-2">
-        <Field label="Personal, flera val" hint="Håll cmd/ctrl för att välja flera. Systemet skapar ett pass per vald person och dag.">
-          <select name="staff_profile_ids" multiple defaultValue={selectedStaffIds} size={Math.min(8, Math.max(4, staff.length || 4))} className={fieldClass(state, 'staff_profile_ids', selectClassName)} aria-invalid={Boolean(state.fieldErrors?.staff_profile_ids)}>
-            {staff.map((person) => <option key={person.id} value={person.id}>{person.full_name}{person.job_title ? ` · ${person.job_title}` : ''}</option>)}
-          </select>
+        <Field label="Personal" hint="Klicka i eller ur personer. Systemet skapar ett pass per vald person och dag.">
+          <div className={choicePanelClass(state, 'staff_profile_ids')} aria-invalid={Boolean(state.fieldErrors?.staff_profile_ids)}>
+            {staff.length ? staff.map((person) => (
+              <label key={person.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-800 hover:bg-white">
+                <input type="checkbox" name="staff_profile_ids" value={person.id} defaultChecked={selectedStaffIds.includes(person.id)} className="mt-1 h-4 w-4 rounded border-slate-300" />
+                <span>
+                  <span className="font-semibold">{person.full_name ?? 'Namnlös personal'}</span>
+                  {person.job_title ? <span className="block text-xs text-slate-500">{person.job_title}</span> : null}
+                </span>
+              </label>
+            )) : <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Ingen personal finns upplagd.</p>}
+          </div>
           {fieldMessage(state, 'staff_profile_ids')}
         </Field>
 
-        <Field label="Team, flera val" hint="Välj team och slå på auto-fyll för att skapa pass för teammedlemmar.">
-          <select name="team_ids" multiple defaultValue={selectedTeamIds} size={Math.min(8, Math.max(4, teams.length || 4))} className={fieldClass(state, 'team_ids', selectClassName)} aria-invalid={Boolean(state.fieldErrors?.team_ids)}>
-            {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-          </select>
+        <Field label="Team" hint="Klicka i eller ur team. Slå på auto-fyll om teamets personal ska väljas automatiskt.">
+          <div className={choicePanelClass(state, 'team_ids')} aria-invalid={Boolean(state.fieldErrors?.team_ids)}>
+            {teams.length ? teams.map((team) => (
+              <label key={team.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-800 hover:bg-white">
+                <input type="checkbox" name="team_ids" value={team.id} defaultChecked={selectedTeamIds.includes(team.id)} className="mt-1 h-4 w-4 rounded border-slate-300" />
+                <span className="font-semibold">{team.name ?? 'Namnlöst team'}</span>
+              </label>
+            )) : <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Inget team finns upplagt.</p>}
+          </div>
           {fieldMessage(state, 'team_ids')}
         </Field>
       </div>

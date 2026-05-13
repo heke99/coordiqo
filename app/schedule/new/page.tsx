@@ -1,17 +1,25 @@
 export const dynamic = 'force-dynamic'
 
 import { AppShell } from '@/components/app/app-shell'
-import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
-import { createShiftAction } from '@/lib/platform/actions'
+import { ShiftCreateForm } from '@/components/schedule/shift-create-form'
+import { FormCard } from '@/components/ui/form-card'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function NewShiftPage() {
   const auth = await requireAuth()
   if (!auth.membership) return null
+
   const [{ data: staff }, { data: teams }] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('full_name'),
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
   ])
-  return <AppShell auth={auth} title="Nytt pass" subtitle="Skapa ett verkligt planeringsunderlag för personal eller team."><FormCard title="Passinformation" description="Kapacitet räknas från arbetstid minus rast och buffer."><form action={createShiftAction} className="grid gap-4 sm:grid-cols-2"><Field label="Titel"><input name="title" className={inputClassName} placeholder="Dagpass, morgonteam, jour..." /></Field><Field label="Datum"><input name="shift_date" type="date" required className={inputClassName} /></Field><Field label="Starttid"><input name="start_time" type="time" required className={inputClassName} /></Field><Field label="Sluttid"><input name="end_time" type="time" required className={inputClassName} /></Field><Field label="Personal"><select name="staff_profile_id" className={selectClassName}><option value="">Ingen personal</option>{staff?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></Field><Field label="Team"><select name="team_id" className={selectClassName}><option value="">Inget team</option>{teams?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field><Field label="Rast minuter"><input name="break_minutes" type="number" min="0" defaultValue="30" className={inputClassName} /></Field><Field label="Buffer minuter"><input name="buffer_minutes" type="number" min="0" defaultValue="15" className={inputClassName} /></Field><Field label="Planerat minuter"><input name="planned_minutes" type="number" min="0" defaultValue="0" className={inputClassName} /></Field><Field label="Färdsätt"><select name="transport_mode" defaultValue="car" className={selectClassName}><option value="car">Bil</option><option value="service_vehicle">Servicebil</option><option value="electric_vehicle">Elbil</option><option value="bike">Cykel</option><option value="walk">Gång</option><option value="public_transport">Kollektivtrafik</option><option value="mixed">Mixat</option></select></Field><Field label="Startplats"><select name="start_location_type" defaultValue="company_base" className={selectClassName}><option value="home">Hem</option><option value="company_base">Kontor/företagsbas</option><option value="team_base">Team-bas</option><option value="custom">Egen adress</option><option value="first_task">Första uppdraget</option></select></Field><Field label="Startadress"><input name="start_address_text" className={inputClassName} /></Field><Field label="Slutplats"><select name="end_location_type" defaultValue="company_base" className={selectClassName}><option value="home">Hem</option><option value="company_base">Kontor/företagsbas</option><option value="team_base">Team-bas</option><option value="custom">Egen adress</option><option value="last_task">Sista uppdraget</option></select></Field><Field label="Slutadress"><input name="end_address_text" className={inputClassName} /></Field><Field label="Status"><select name="status" defaultValue="planned" className={selectClassName}><option value="draft">Utkast</option><option value="planned">Planerat</option><option value="confirmed">Bekräftat</option></select></Field><Field label="Lås pass för AI/mallar"><select name="planning_locked" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field><div className="sm:col-span-2"><Field label="Låsningsorsak"><input name="locked_reason" className={inputClassName} /></Field></div><div className="sm:col-span-2"><Field label="Anteckningar"><textarea name="notes" className={textareaClassName} /></Field></div><div className="sm:col-span-2"><button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Skapa pass</button></div></form></FormCard></AppShell>
+
+  return (
+    <AppShell auth={auth} title="Nytt pass" subtitle="Skapa ett verkligt planeringsunderlag för personal eller team.">
+      <FormCard title="Passinformation" description="Kapacitet räknas från arbetstid minus rast och buffer. Fel visas direkt i formuläret utan att du tappar ifyllda värden.">
+        <ShiftCreateForm staff={staff ?? []} teams={teams ?? []} />
+      </FormCard>
+    </AppShell>
+  )
 }

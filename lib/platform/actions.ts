@@ -1902,9 +1902,65 @@ export async function createEntityContactAction(formData: FormData) {
   revalidatePath(`/entities/${entityId}`)
 }
 
+function normalizeTimePart(time: string | null) {
+  const raw = time?.trim()
+  if (!raw) return null
+  const match = raw.match(/^(\d{2}):(\d{2})(?::\d{2})?$/)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
+  return `${match[1]}:${match[2]}`
+}
+
+function addDaysToDateString(date: string, days: number) {
+  const cursor = new Date(`${date}T00:00:00Z`)
+  cursor.setUTCDate(cursor.getUTCDate() + days)
+  return cursor.toISOString().slice(0, 10)
+}
+
 function combineDateTime(date: string | null, time: string | null) {
-  if (!date || !time) return null
-  return `${date}T${time}:00`
+  const normalizedTime = normalizeTimePart(time)
+  if (!date || !normalizedTime) return null
+  return `${date}T${normalizedTime}:00`
+}
+
+function combineShiftDateTimeRange(date: string | null, startTime: string | null, endTime: string | null) {
+  const normalizedStartTime = normalizeTimePart(startTime)
+  const normalizedEndTime = normalizeTimePart(endTime)
+  if (!date || !normalizedStartTime || !normalizedEndTime) return null
+
+  const endDate = normalizedEndTime <= normalizedStartTime ? addDaysToDateString(date, 1) : date
+  const startsAt = `${date}T${normalizedStartTime}:00`
+  const endsAt = `${endDate}T${normalizedEndTime}:00`
+
+  if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) return null
+
+  return {
+    startTime: normalizedStartTime,
+    endTime: normalizedEndTime,
+    startsAt,
+    endsAt,
+  }
+}
+
+function requireShiftDateTimeRange(date: string | null, startTime: string | null, endTime: string | null) {
+  const range = combineShiftDateTimeRange(date, startTime, endTime)
+  if (!date || !normalizeTimePart(startTime) || !normalizeTimePart(endTime)) {
+    throw new FormActionValidationError('Datum, starttid och sluttid krävs.', {
+      shift_date: !date ? 'Välj datum.' : undefined,
+      date_from: !date ? 'Välj från datum.' : undefined,
+      start_time: !normalizeTimePart(startTime) ? 'Ange giltig starttid.' : undefined,
+      end_time: !normalizeTimePart(endTime) ? 'Ange giltig sluttid.' : undefined,
+    })
+  }
+  if (!range) {
+    throw new FormActionValidationError('Tiderna kunde inte tolkas korrekt.', {
+      start_time: 'Kontrollera starttid.',
+      end_time: 'Kontrollera sluttid.',
+    })
+  }
+  return range
 }
 
 function minutesBetween(startIso: string, endIso: string) {
@@ -1988,13 +2044,10 @@ async function refreshAvailabilityConflicts(companyId: string, actorUserId: stri
   await audit(companyId, actorUserId, 'refresh', 'availability_conflicts', null, { staffProfileId, teamId })
 }
 
-export async function createShiftAction(formData: FormData) {
+async function createShiftCore(formData: FormData) {
   const auth = await requireMembership('planner', 'att skapa pass')
   const date = value(formData, 'shift_date')
-  const startsAt = combineDateTime(date, value(formData, 'start_time'))
-  const endsAt = combineDateTime(date, value(formData, 'end_time'))
-  if (!date || !startsAt || !endsAt) throw new Error('Datum, starttid och sluttid krävs.')
-  if (new Date(endsAt) <= new Date(startsAt)) throw new Error('Sluttid måste vara efter starttid.')
+  const { startsAt, endsAt } = requireShiftDateTimeRange(date, value(formData, 'start_time'), value(formData, 'end_time'))
   const breakMinutes = Number(value(formData, 'break_minutes') ?? 0)
   const bufferMinutes = Number(value(formData, 'buffer_minutes') ?? 0)
   const plannedMinutes = Number(value(formData, 'planned_minutes') ?? 0)
@@ -2033,16 +2086,37 @@ export async function createShiftAction(formData: FormData) {
   await audit(auth.membership!.companyId, auth.userId, 'create', 'shift', data.id)
   await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, value(formData, 'staff_profile_id'), value(formData, 'team_id'))
   revalidatePath('/schedule')
-  redirect(`/schedule/${data.id}`)
+  return data.id as string
+}
+
+export async function createShiftAction(formData: FormData) {
+  const shiftId = await createShiftCore(formData)
+  redirect(`/schedule/${shiftId}`)
+}
+
+export async function createShiftFormAction(_previousState: unknown, formData: FormData) {
+  try {
+    const shiftId = await createShiftCore(formData)
+    redirect(`/schedule/${shiftId}`)
+  } catch (error) {
+    if (isNextRedirectError(error)) throw error
+
+    const validationError = error instanceof FormActionValidationError ? error : null
+    return {
+      ok: false,
+      message: validationError?.message ?? errorMessage(error, 'Kunde inte skapa pass.'),
+      fieldErrors: validationError?.fieldErrors ?? {},
+      values: formDataSnapshot(formData),
+    }
+  }
 }
 
 export async function updateShiftAction(formData: FormData) {
   const auth = await requireMembership('planner', 'att uppdatera pass')
   const id = value(formData, 'id')
   const date = value(formData, 'shift_date')
-  const startsAt = combineDateTime(date, value(formData, 'start_time'))
-  const endsAt = combineDateTime(date, value(formData, 'end_time'))
-  if (!id || !date || !startsAt || !endsAt) throw new Error('Pass-id, datum, starttid och sluttid krävs.')
+  if (!id) throw new Error('Pass-id saknas.')
+  const { startsAt, endsAt } = requireShiftDateTimeRange(date, value(formData, 'start_time'), value(formData, 'end_time'))
   const breakMinutes = Number(value(formData, 'break_minutes') ?? 0)
   const bufferMinutes = Number(value(formData, 'buffer_minutes') ?? 0)
   const plannedMinutes = Number(value(formData, 'planned_minutes') ?? 0)
@@ -2273,8 +2347,9 @@ export async function applyAvailabilityTemplateAction(formData: FormData) {
     for (const item of items as any[]) {
       if (Number(item.weekday) !== weekday) continue
       for (const target of targets as any[]) {
-        const startsAt = `${dateString}T${String(item.start_time).slice(0,5)}:00`
-        const endsAt = `${dateString}T${String(item.end_time).slice(0,5)}:00`
+        const range = combineShiftDateTimeRange(dateString, String(item.start_time ?? ''), String(item.end_time ?? ''))
+        if (!range) { skipped += 1; continue }
+        const { startsAt, endsAt } = range
         const { data: existing } = await supabaseAdmin
           .from('shifts')
           .select('id')
@@ -2372,12 +2447,9 @@ function weekdayNumber(dateString: string) {
 }
 
 function combineShiftPresetDateTime(date: string, startTime: string, endTime: string) {
-  const startsAt = `${date}T${startTime.slice(0, 5)}:00`
-  const endDate = new Date(`${date}T00:00:00`)
-  if (endTime.slice(0, 5) <= startTime.slice(0, 5)) endDate.setDate(endDate.getDate() + 1)
-  const endDateString = endDate.toISOString().slice(0, 10)
-  const endsAt = `${endDateString}T${endTime.slice(0, 5)}:00`
-  return { startsAt, endsAt }
+  const range = combineShiftDateTimeRange(date, startTime, endTime)
+  if (!range) throw new FormActionValidationError('Start- och sluttid krävs.', { start_time: 'Ange giltig starttid.', end_time: 'Ange giltig sluttid.' })
+  return { startsAt: range.startsAt, endsAt: range.endsAt }
 }
 
 function statusForBulk(valueFromForm: string | null) {
@@ -2643,14 +2715,17 @@ async function bulkCreateShiftsCore(formData: FormData) {
   const preset = await loadShiftPresetForCompany(companyId, presetId, auth.membership?.industryType ?? null)
   const customName = value(formData, 'custom_name')
   const title = preset?.name ?? customName ?? 'Eget pass'
-  const startTime = preset?.start_time ? String(preset.start_time).slice(0, 5) : value(formData, 'start_time')
-  const endTime = preset?.end_time ? String(preset.end_time).slice(0, 5) : value(formData, 'end_time')
-  if (!startTime || !endTime) {
+  const rawStartTime = preset?.start_time ? String(preset.start_time).slice(0, 5) : value(formData, 'start_time')
+  const rawEndTime = preset?.end_time ? String(preset.end_time).slice(0, 5) : value(formData, 'end_time')
+  if (!rawStartTime || !rawEndTime) {
     throw new FormActionValidationError('Start- och sluttid krävs.', {
-      start_time: !startTime ? 'Ange starttid.' : undefined,
-      end_time: !endTime ? 'Ange sluttid.' : undefined,
+      start_time: !rawStartTime ? 'Ange starttid.' : undefined,
+      end_time: !rawEndTime ? 'Ange sluttid.' : undefined,
     })
   }
+  const validatedTimeRange = requireShiftDateTimeRange(fromDate, rawStartTime, rawEndTime)
+  const startTime = validatedTimeRange.startTime
+  const endTime = validatedTimeRange.endTime
 
   if (value(formData, 'save_custom_as_preset') === 'true' && !preset && customName) {
     await supabaseAdmin.from('shift_presets').insert({
