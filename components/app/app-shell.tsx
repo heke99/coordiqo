@@ -10,6 +10,7 @@ const primaryNav = [
   { href: '/resources', label: 'Resurser', description: 'Fordon, utrustning och nycklar' },
   { href: '/entities', label: 'Objekt', description: 'Branschstyrda objekt' },
   { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och arbetsorder' },
+  { href: '/planning', label: 'Planering', description: 'Motor, utkast och konflikter' },
   { href: '/schedule', label: 'Schema', description: 'Pass, kapacitet och låsningar' },
   { href: '/absences', label: 'Frånvaro', description: 'Sjukdom, semester och blockeringar' },
   { href: '/availability', label: 'Tillgänglighet', description: 'Block, konflikter och planeringsunderlag' },

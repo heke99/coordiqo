@@ -6,6 +6,10 @@ import { redirect } from 'next/navigation'
 import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
+import { conflictLevel } from '@/lib/planning/conflict-detection'
+import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
+import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '@/lib/planning/planning-engine'
+import { publishPlanningDraft } from '@/lib/planning/publish-draft'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -48,6 +52,112 @@ function durationMinutesFromForm(formData: FormData) {
   const unit = value(formData, 'duration_unit') ?? 'minutes'
   const normalized = Number.isFinite(rawValue) && rawValue > 0 ? rawValue : 60
   return Math.max(1, Math.round(unit === 'hours' ? normalized * 60 : normalized))
+}
+
+function addMinutesIso(iso: string, minutes: number) {
+  return new Date(new Date(iso).getTime() + minutes * 60000).toISOString()
+}
+
+
+async function loadManualPlanningEvaluation(params: {
+  companyId: string
+  taskId: string
+  staffProfileId?: string | null
+  teamId?: string | null
+  shiftId?: string | null
+  plannedStartAt: string
+  plannedEndAt: string
+}) {
+  const [{ data: task }, { data: staff }, { data: shift }, { data: requirements }, { data: staffSkills }, { data: staffCertifications }, { data: absences }, { data: existingAssignments }] = await Promise.all([
+    supabaseAdmin
+      .from('tasks')
+      .select('id, company_id, task_type_id, entity_id, assigned_team_id, assigned_staff_id, title, priority, status, time_window_start, time_window_end, scheduled_start, scheduled_end, estimated_duration_minutes, sla_due_at')
+      .eq('id', params.taskId)
+      .eq('company_id', params.companyId)
+      .is('archived_at', null)
+      .maybeSingle(),
+    params.staffProfileId
+      ? supabaseAdmin
+          .from('staff_profiles')
+          .select('id, company_id, full_name, status, primary_team_id, transport_mode')
+          .eq('id', params.staffProfileId)
+          .eq('company_id', params.companyId)
+          .is('archived_at', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    params.shiftId
+      ? supabaseAdmin
+          .from('shifts')
+          .select('id, company_id, staff_profile_id, team_id, title, shift_date, starts_at, ends_at, status, capacity_minutes, planned_minutes, remaining_minutes, planning_locked, transport_mode')
+          .eq('id', params.shiftId)
+          .eq('company_id', params.companyId)
+          .is('archived_at', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabaseAdmin
+      .from('task_requirements')
+      .select('id, task_id, requirement_kind, skill_id, certification_id, required_value, minimum_level, is_hard_requirement, description, skills(name), certifications(name)')
+      .eq('company_id', params.companyId)
+      .eq('task_id', params.taskId)
+      .is('archived_at', null),
+    params.staffProfileId
+      ? supabaseAdmin
+          .from('staff_skills')
+          .select('id, staff_profile_id, skill_id, level')
+          .eq('company_id', params.companyId)
+          .eq('staff_profile_id', params.staffProfileId)
+          .is('archived_at', null)
+      : Promise.resolve({ data: [] }),
+    params.staffProfileId
+      ? supabaseAdmin
+          .from('staff_certifications')
+          .select('id, staff_profile_id, certification_id, status, expires_at')
+          .eq('company_id', params.companyId)
+          .eq('staff_profile_id', params.staffProfileId)
+          .is('archived_at', null)
+      : Promise.resolve({ data: [] }),
+    params.staffProfileId
+      ? supabaseAdmin
+          .from('absences')
+          .select('id, staff_profile_id, starts_at, ends_at, reason')
+          .eq('company_id', params.companyId)
+          .eq('staff_profile_id', params.staffProfileId)
+          .eq('affects_planning', true)
+          .is('archived_at', null)
+          .lt('starts_at', params.plannedEndAt)
+          .gt('ends_at', params.plannedStartAt)
+      : Promise.resolve({ data: [] }),
+    supabaseAdmin
+      .from('task_assignments')
+      .select('id, task_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, is_locked')
+      .eq('company_id', params.companyId)
+      .is('archived_at', null)
+      .in('status', ['draft', 'proposed', 'assigned', 'confirmed'])
+      .lt('planned_start_at', params.plannedEndAt)
+      .gt('planned_end_at', params.plannedStartAt)
+      .limit(100),
+  ])
+
+  if (!task) throw new Error('Uppdraget kunde inte hittas.')
+  if (params.staffProfileId && !staff) throw new Error('Personalen kunde inte hittas.')
+
+  const evaluation = evaluateCandidate({
+    task: task as any,
+    staff: staff as any,
+    teamId: params.teamId ?? (staff as any)?.primary_team_id ?? null,
+    shift: shift as any,
+    plannedStartAt: params.plannedStartAt,
+    plannedEndAt: params.plannedEndAt,
+    requirements: (requirements ?? []) as any,
+    staffSkills: (staffSkills ?? []) as any,
+    staffCertifications: (staffCertifications ?? []) as any,
+    absences: (absences ?? []) as any,
+    existingAssignments: (existingAssignments ?? []) as any,
+    continuityMatch: false,
+    areaMatch: Boolean((task as any).assigned_team_id && (staff as any)?.primary_team_id === (task as any).assigned_team_id),
+  })
+
+  return { task, staff, shift, evaluation }
 }
 
 async function requireMembership(minimumRole: Parameters<typeof assertCompanyPermission>[1], label: string) {
@@ -1320,6 +1430,240 @@ export async function resolveRuleViolationAction(formData: FormData) {
   if (error) throw new Error(error.message)
   await audit(auth.membership!.companyId, auth.userId, 'resolve', 'rule_violation', id, { taskId })
   revalidatePath(`/tasks/${taskId}`)
+}
+
+
+
+export async function createManualTaskAssignmentAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att tilldela uppdrag')
+  const taskId = value(formData, 'task_id')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const teamId = value(formData, 'team_id')
+  const shiftId = value(formData, 'shift_id')
+  const plannedStartAt = value(formData, 'planned_start_at')
+  let plannedEndAt = value(formData, 'planned_end_at')
+
+  if (!taskId) throw new Error('Uppdrag saknas.')
+  if (!staffProfileId && !teamId) throw new Error('Välj personal eller team.')
+  if (!plannedStartAt) throw new Error('Planerad start krävs.')
+
+  const { data: durationTask } = await supabaseAdmin
+    .from('tasks')
+    .select('estimated_duration_minutes')
+    .eq('id', taskId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+
+  plannedEndAt = plannedEndAt ?? addMinutesIso(plannedStartAt, Number(durationTask?.estimated_duration_minutes ?? 60))
+  if (new Date(plannedEndAt) <= new Date(plannedStartAt)) throw new Error('Planerad sluttid måste vara efter starttid.')
+
+  const { task, staff, shift, evaluation } = await loadManualPlanningEvaluation({
+    companyId: auth.membership!.companyId,
+    taskId,
+    staffProfileId,
+    teamId,
+    shiftId,
+    plannedStartAt,
+    plannedEndAt,
+  })
+
+  const hardConflicts = evaluation.conflicts.filter((conflict) => ['hard', 'critical', 'blocked'].includes(conflict.severity))
+  const softConflicts = evaluation.conflicts.filter((conflict) => ['soft', 'warning'].includes(conflict.severity))
+  const overrideSoft = value(formData, 'override_soft_conflicts') === 'true'
+  const overrideReason = value(formData, 'override_reason')
+
+  if (hardConflicts.length > 0) {
+    throw new Error(`Tilldelningen stoppades av hårda konflikter: ${hardConflicts.slice(0, 3).map((conflict) => conflict.message).join(' ')}`)
+  }
+
+  if (softConflicts.length > 0 && !overrideSoft) {
+    throw new Error(`Mjuka konflikter behöver granskas eller override: ${softConflicts.slice(0, 3).map((conflict) => conflict.message).join(' ')}`)
+  }
+
+  if (softConflicts.length > 0 && overrideSoft && !overrideReason) {
+    throw new Error('Override reason krävs när mjuka konflikter ignoreras.')
+  }
+
+  const { data: assignment, error } = await supabaseAdmin
+    .from('task_assignments')
+    .insert({
+      company_id: auth.membership!.companyId,
+      task_id: taskId,
+      staff_profile_id: staffProfileId,
+      team_id: teamId ?? (staff as any)?.primary_team_id ?? null,
+      shift_id: shiftId,
+      planned_start_at: plannedStartAt,
+      planned_end_at: plannedEndAt,
+      status: value(formData, 'status') ?? 'assigned',
+      source_type: 'manual',
+      is_locked: value(formData, 'is_locked') === 'true',
+      locked_reason: value(formData, 'locked_reason'),
+      override_reason: overrideReason,
+      conflict_override_approved: overrideSoft,
+      explanation: evaluation.explanation,
+      metadata: { score: evaluation.score, conflictLevel: conflictLevel(evaluation.conflicts), source: 'manual_assignment_form' },
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  if (evaluation.conflicts.length > 0) {
+    const { error: conflictError } = await supabaseAdmin.from('planning_conflicts').insert(evaluation.conflicts.map((conflict) => ({
+      company_id: auth.membership!.companyId,
+      task_assignment_id: assignment.id,
+      task_id: taskId,
+      staff_profile_id: staffProfileId,
+      team_id: teamId ?? (staff as any)?.primary_team_id ?? null,
+      shift_id: shiftId,
+      conflict_type: conflict.conflictType,
+      severity: conflict.severity,
+      status: ['soft', 'warning'].includes(conflict.severity) && overrideSoft ? 'overridden' : 'open',
+      message: conflict.message,
+      details: conflict.details ?? {},
+      resolved_by: ['soft', 'warning'].includes(conflict.severity) && overrideSoft ? auth.userId : null,
+      resolved_at: ['soft', 'warning'].includes(conflict.severity) && overrideSoft ? new Date().toISOString() : null,
+    })))
+    if (conflictError) throw new Error(conflictError.message)
+  }
+
+  await supabaseAdmin
+    .from('tasks')
+    .update({
+      assigned_staff_id: staffProfileId,
+      assigned_team_id: teamId ?? (staff as any)?.primary_team_id ?? (task as any).assigned_team_id ?? null,
+      scheduled_start: plannedStartAt,
+      scheduled_end: plannedEndAt,
+      status: 'assigned',
+      updated_by: auth.userId,
+    })
+    .eq('id', taskId)
+    .eq('company_id', auth.membership!.companyId)
+
+  await supabaseAdmin.from('task_status_history').insert({ company_id: auth.membership!.companyId, task_id: taskId, old_status: (task as any).status, new_status: 'assigned', reason: 'Manuell tilldelning via Batch 8B', changed_by: auth.userId })
+
+  if (shift?.id) await recalculateShiftAssignmentCapacity(auth.membership!.companyId, shift.id)
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'task_assignment', assignment.id, { taskId, staffProfileId, teamId, shiftId, score: evaluation.score, softOverride: overrideSoft })
+  revalidatePath('/tasks')
+  revalidatePath(`/tasks/${taskId}`)
+  revalidatePath('/planning')
+  redirect(`/tasks/${taskId}`)
+}
+
+export async function createPlanningRunAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa planeringskörning')
+  const dateFrom = value(formData, 'date_from')
+  const dateTo = value(formData, 'date_to') ?? dateFrom
+  if (!dateFrom || !dateTo) throw new Error('Datumintervall krävs.')
+
+  const result = await createPlanningRunWithDraft({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    name: value(formData, 'name'),
+    dateFrom,
+    dateTo,
+    teamId: value(formData, 'team_id'),
+    staffProfileId: value(formData, 'staff_profile_id'),
+    taskTypeId: value(formData, 'task_type_id'),
+    industryType: auth.membership?.industryType ?? null,
+    areaLabel: value(formData, 'area_label'),
+    unscheduledOnly: value(formData, 'unscheduled_only') !== 'false',
+    includeLockedAssignments: value(formData, 'include_locked_assignments') !== 'false',
+  })
+
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'planning_run', result.runId, result)
+  revalidatePath('/planning')
+  revalidatePath('/planning/runs')
+  redirect(`/planning/runs/${result.runId}`)
+}
+
+export async function publishPlanningDraftAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att publicera planeringsutkast')
+  const draftId = value(formData, 'draft_id')
+  if (!draftId) throw new Error('Planeringsutkast saknas.')
+
+  const selected = formValues(formData, 'draft_item_ids')
+  const result = await publishPlanningDraft({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    draftId,
+    selectedDraftItemIds: selected.length ? selected : undefined,
+    lockAssignments: value(formData, 'lock_assignments') === 'true',
+  })
+
+  await audit(auth.membership!.companyId, auth.userId, 'publish', 'planning_draft', draftId, result)
+  revalidatePath('/planning')
+  revalidatePath('/planning/runs')
+  redirect('/planning')
+}
+
+export async function updatePlanningDraftItemAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att uppdatera planeringsrad')
+  const itemId = value(formData, 'id')
+  const draftId = value(formData, 'planning_draft_id')
+  if (!itemId || !draftId) throw new Error('Planeringsrad saknas.')
+
+  const { error } = await supabaseAdmin
+    .from('planning_draft_items')
+    .update({
+      staff_profile_id: value(formData, 'staff_profile_id'),
+      team_id: value(formData, 'team_id'),
+      shift_id: value(formData, 'shift_id'),
+      planned_start_at: value(formData, 'planned_start_at'),
+      planned_end_at: value(formData, 'planned_end_at'),
+      status: value(formData, 'status') ?? 'proposed',
+      is_locked: value(formData, 'is_locked') === 'true',
+      locked_reason: value(formData, 'locked_reason'),
+      explanation: value(formData, 'explanation'),
+      metadata: { manual_edit: true, edited_at: new Date().toISOString() },
+    })
+    .eq('id', itemId)
+    .eq('planning_draft_id', draftId)
+    .eq('company_id', auth.membership!.companyId)
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'planning_draft_item', itemId, { draftId })
+  revalidatePath('/planning')
+  revalidatePath('/planning/runs')
+}
+
+export async function resolvePlanningConflictAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att lösa planeringskonflikt')
+  const conflictId = value(formData, 'id')
+  const reason = value(formData, 'reason')
+  const resolutionType = value(formData, 'resolution_type') ?? 'resolved'
+  if (!conflictId) throw new Error('Konflikt-id saknas.')
+
+  const { data: conflict } = await supabaseAdmin
+    .from('planning_conflicts')
+    .select('id')
+    .eq('id', conflictId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+  if (!conflict) throw new Error('Konflikten kunde inte hittas.')
+
+  const { error } = await supabaseAdmin
+    .from('planning_conflicts')
+    .update({ status: resolutionType === 'override' ? 'overridden' : 'resolved', resolved_by: auth.userId, resolved_at: new Date().toISOString() })
+    .eq('id', conflictId)
+    .eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+
+  const { error: resolutionError } = await supabaseAdmin.from('planning_conflict_resolutions').insert({
+    company_id: auth.membership!.companyId,
+    conflict_id: conflictId,
+    resolution_type: resolutionType,
+    reason,
+    resolved_by: auth.userId,
+  })
+  if (resolutionError) throw new Error(resolutionError.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'resolve', 'planning_conflict', conflictId, { resolutionType })
+  revalidatePath('/planning')
+  revalidatePath('/planning/runs')
 }
 
 export async function switchActiveCompanyAction(formData: FormData) {
