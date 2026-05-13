@@ -57,6 +57,15 @@ export function detectCandidateConflicts(input: CandidateEvaluationInput): Plann
     })
   }
 
+  if (input.task.assigned_team_id && input.staff?.primary_team_id && input.staff.primary_team_id !== input.task.assigned_team_id) {
+    conflicts.push({
+      conflictType: 'team_mismatch',
+      severity: 'warning',
+      message: 'Personen tillhör inte uppdragets primära team/område.',
+      details: { requiredTeamId: input.task.assigned_team_id, actualTeamId: input.staff.primary_team_id },
+    })
+  }
+
   if (!input.shift) {
     conflicts.push({
       conflictType: 'missing_shift',

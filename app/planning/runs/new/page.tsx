@@ -26,7 +26,7 @@ export default async function NewPlanningRunPage() {
       auth={auth}
       title="Ny planeringskörning"
       subtitle="Skapa ett utkast från uppdrag, projekt eller ett vanligt filter. Motorn publicerar aldrig direkt."
-      actions={<Link href="/planning" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link>}
+      actions={<div className="flex gap-2"><Link href="/planning/assistant" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">AI-assistent</Link><Link href="/planning" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link></div>}
     >
       <FormCard title="Körningsfilter" description="Välj period, projekt, team/person och om endast oschemalagda uppdrag ska tas med.">
         <form action={createPlanningRunAction} className="grid gap-5">

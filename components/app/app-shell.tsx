@@ -13,6 +13,7 @@ const primaryNav = [
   { href: '/projects', label: 'Projekt', description: 'Kalkyl, intake och projektuppdrag' },
   { href: '/projects/templates', label: 'Projektmallar', description: 'Intake, regler och kalkylpresets' },
   { href: '/planning', label: 'Planering', description: 'Motor, utkast och konflikter' },
+  { href: '/planning/assistant', label: 'AI-planerare', description: 'Text till planeringsutkast' },
   { href: '/planning/templates', label: 'Planeringsmallar', description: 'Återanvändbara planeringsutkast' },
   { href: '/schedule', label: 'Schema', description: 'Pass, kapacitet och låsningar' },
   { href: '/absences', label: 'Frånvaro', description: 'Sjukdom, semester och blockeringar' },

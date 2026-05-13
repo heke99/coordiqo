@@ -7,7 +7,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
-import { publishPlanningDraftAction, resolvePlanningConflictAction, savePlanningDraftAsTemplateAction, updatePlanningDraftItemAction } from '@/lib/platform/actions'
+import { applyCandidateToPlanningDraftItemAction, publishPlanningDraftAction, resolvePlanningConflictAction, savePlanningDraftAsTemplateAction, updatePlanningDraftItemAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function PlanningRunDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,12 +25,36 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
 
   if (!run) notFound()
 
-  const [{ data: items }, { data: candidates }, { data: conflicts }, { data: publications }] = draft ? await Promise.all([
-    supabaseAdmin.from('planning_draft_items').select('id, task_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, score, eligible, conflict_level, rejection_reason, explanation, is_locked, tasks(title, priority, status), staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('sort_order'),
-    supabaseAdmin.from('assignment_candidates').select('id, task_id, staff_profile_id, team_id, shift_id, score, eligible, rejection_reason, explanation, staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('score', { ascending: false }).limit(100),
-    supabaseAdmin.from('planning_conflicts').select('id, planning_draft_item_id, task_id, conflict_type, severity, status, message, created_at, staff_profiles(full_name), tasks(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
-    supabaseAdmin.from('planning_publications').select('id, status, published_assignment_ids, skipped_count, created_at').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }),
-  ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
+  let items: any[] = []
+  let candidates: any[] = []
+  let scoreBreakdown: any[] = []
+  let conflicts: any[] = []
+  let publications: any[] = []
+
+  if (draft) {
+    const [itemsResult, candidatesResult, conflictsResult, publicationsResult] = await Promise.all([
+      supabaseAdmin.from('planning_draft_items').select('id, task_id, candidate_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, score, eligible, conflict_level, rejection_reason, explanation, is_locked, metadata, tasks(title, priority, status), staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('sort_order'),
+      supabaseAdmin.from('assignment_candidates').select('id, task_id, staff_profile_id, team_id, shift_id, score, eligible, rejection_reason, explanation, metadata, staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('score', { ascending: false }).limit(150),
+      supabaseAdmin.from('planning_conflicts').select('id, planning_draft_item_id, task_id, conflict_type, severity, status, message, created_at, staff_profiles(full_name), tasks(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
+      supabaseAdmin.from('planning_publications').select('id, status, published_assignment_ids, skipped_count, created_at').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }),
+    ])
+
+    items = itemsResult.data ?? []
+    candidates = candidatesResult.data ?? []
+    conflicts = conflictsResult.data ?? []
+    publications = publicationsResult.data ?? []
+
+    const candidateIds = candidates.map((candidate: any) => candidate.id).filter(Boolean)
+    if (candidateIds.length) {
+      const { data } = await supabaseAdmin
+        .from('candidate_score_breakdown')
+        .select('id, candidate_id, score_key, label, points, max_points, is_blocking, message')
+        .eq('company_id', auth.membership.companyId)
+        .in('candidate_id', candidateIds)
+        .order('created_at')
+      scoreBreakdown = data ?? []
+    }
+  }
 
   const conflictsByItem = new Map<string, any[]>()
   for (const conflict of conflicts ?? []) {
@@ -45,6 +69,13 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
     const list = candidatesByTask.get(candidate.task_id) ?? []
     list.push(candidate)
     candidatesByTask.set(candidate.task_id, list)
+  }
+
+  const scoreBreakdownByCandidate = new Map<string, any[]>()
+  for (const part of scoreBreakdown ?? []) {
+    const list = scoreBreakdownByCandidate.get(part.candidate_id) ?? []
+    list.push(part)
+    scoreBreakdownByCandidate.set(part.candidate_id, list)
   }
 
   return (
@@ -118,7 +149,26 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
 
                         {itemConflicts.length ? <div className="mt-4 space-y-2">{itemConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">{conflict.message}</div>)}</div> : null}
 
-                        {itemCandidates.length ? <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-slate-800">Visa kandidater</summary><div className="mt-3 space-y-2">{itemCandidates.slice(0, 5).map((candidate: any) => <div key={candidate.id} className="rounded-xl bg-white px-3 py-2 text-sm"><b>{candidate.staff_profiles?.full_name ?? candidate.teams?.name ?? 'Kandidat'}</b><span className="ml-2 text-slate-500">score {candidate.score} · {candidate.eligible ? 'eligible' : candidate.rejection_reason}</span></div>)}</div></details> : null}
+                        {itemCandidates.length ? <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-slate-800">Visa kandidater och score</summary><div className="mt-3 space-y-3">{itemCandidates.slice(0, 5).map((candidate: any) => {
+                          const parts = scoreBreakdownByCandidate.get(candidate.id) ?? []
+                          return (
+                            <div key={candidate.id} className="rounded-2xl bg-white p-3 text-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold text-slate-950">{candidate.staff_profiles?.full_name ?? candidate.teams?.name ?? 'Kandidat'}</p>
+                                  <p className="mt-1 text-xs text-slate-500">score {candidate.score} · {candidate.eligible ? 'kan användas' : candidate.rejection_reason}</p>
+                                </div>
+                                <form action={applyCandidateToPlanningDraftItemAction}>
+                                  <input type="hidden" name="planning_draft_id" value={draft.id} />
+                                  <input type="hidden" name="planning_draft_item_id" value={item.id} />
+                                  <input type="hidden" name="candidate_id" value={candidate.id} />
+                                  <button disabled={candidate.id === item.candidate_id} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 disabled:opacity-40">Använd kandidat</button>
+                                </form>
+                              </div>
+                              {parts.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{parts.map((part: any) => <div key={part.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"><p className="text-xs font-semibold text-slate-800">{part.label} · {part.points}p</p>{part.message ? <p className="mt-1 text-xs text-slate-500">{part.message}</p> : null}</div>)}</div> : null}
+                            </div>
+                          )
+                        })}</div></details> : null}
                       </div>
                     )
                   }) : <p className="text-sm text-slate-600">Utkastet saknar rader.</p>}

@@ -297,10 +297,12 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
       }).sort((a, b) => b.evaluation.score - a.evaluation.score)
 
       const best = candidates.find((candidate) => candidate.evaluation.eligible) ?? candidates[0] ?? null
+      const topCandidates = candidates.slice(0, 5)
       let candidateId: string | null = null
       let evaluation = best?.evaluation ?? null
+      const candidateRowIds: string[] = []
 
-      if (best) {
+      for (const candidate of topCandidates) {
         const { data: candidateRow, error: candidateError } = await supabaseAdmin
           .from('assignment_candidates')
           .insert({
@@ -308,31 +310,32 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
             planning_run_id: run.id,
             planning_draft_id: draft.id,
             task_id: task.id,
-            staff_profile_id: best.person.id,
-            team_id: best.person.primary_team_id ?? null,
-            shift_id: best.shift?.id ?? null,
+            staff_profile_id: candidate.person.id,
+            team_id: candidate.person.primary_team_id ?? null,
+            shift_id: candidate.shift?.id ?? null,
             planned_start_at: plannedStartAt,
             planned_end_at: plannedEndAt,
-            score: best.evaluation.score,
-            eligible: best.evaluation.eligible,
-            rejection_reason: best.evaluation.rejectionReason,
-            explanation: best.evaluation.explanation,
+            score: candidate.evaluation.score,
+            eligible: candidate.evaluation.eligible,
+            rejection_reason: candidate.evaluation.rejectionReason,
+            explanation: candidate.evaluation.explanation,
             source_type: 'planning_run',
             source_id: run.id,
             project_id: input.projectId ?? null,
             project_phase_id: input.projectPhaseId ?? null,
             project_work_item_id: input.projectWorkItemId ?? null,
-            metadata: summarizeEvaluation(best.evaluation),
+            metadata: { ...summarizeEvaluation(candidate.evaluation), rank: candidateRowIds.length + 1, selectedForDraft: candidate === best },
           })
           .select('id')
           .single()
 
         if (candidateError) throw new Error(candidateError.message)
-        candidateId = candidateRow.id
+        candidateRowIds.push(candidateRow.id)
         candidateCount += 1
+        if (candidate === best) candidateId = candidateRow.id
 
-        if (best.evaluation.breakdown.length) {
-          const { error: scoreError } = await supabaseAdmin.from('candidate_score_breakdown').insert(best.evaluation.breakdown.map((part) => ({
+        if (candidate.evaluation.breakdown.length) {
+          const { error: scoreError } = await supabaseAdmin.from('candidate_score_breakdown').insert(candidate.evaluation.breakdown.map((part) => ({
             company_id: input.companyId,
             candidate_id: candidateRow.id,
             score_key: part.scoreKey,
@@ -380,8 +383,8 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
       if (itemError) throw new Error(itemError.message)
       itemCount += 1
 
-      if (candidateId) {
-        await supabaseAdmin.from('assignment_candidates').update({ planning_draft_item_id: item.id }).eq('id', candidateId)
+      if (candidateRowIds.length) {
+        await supabaseAdmin.from('assignment_candidates').update({ planning_draft_item_id: item.id }).in('id', candidateRowIds)
       }
 
       const conflicts = evaluation?.conflicts ?? [{ conflictType: 'no_candidates', severity: 'hard' as const, message: 'Inga kandidater kunde hittas.', details: {} }]

@@ -7,6 +7,7 @@ import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
 import { conflictLevel } from '@/lib/planning/conflict-detection'
+import { interpretAiPlanningPrompt, planningInputFromIntent } from '@/lib/planning/ai-assistant'
 import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
 import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '@/lib/planning/planning-engine'
 import { publishPlanningDraft } from '@/lib/planning/publish-draft'
@@ -1587,6 +1588,153 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
   redirect(`/tasks/${taskId}`)
 }
 
+
+async function replaceDraftItemConflicts(params: {
+  companyId: string
+  actorUserId: string
+  draftId: string
+  itemId: string
+  taskId: string
+  staffProfileId: string | null
+  teamId: string | null
+  shiftId: string | null
+  plannedStartAt: string
+  plannedEndAt: string
+}) {
+  const { task, staff, shift, evaluation } = await loadManualPlanningEvaluation({
+    companyId: params.companyId,
+    taskId: params.taskId,
+    staffProfileId: params.staffProfileId,
+    teamId: params.teamId,
+    shiftId: params.shiftId,
+    plannedStartAt: params.plannedStartAt,
+    plannedEndAt: params.plannedEndAt,
+  })
+
+  await supabaseAdmin
+    .from('planning_conflicts')
+    .update({ status: 'superseded', archived_at: new Date().toISOString() })
+    .eq('company_id', params.companyId)
+    .eq('planning_draft_item_id', params.itemId)
+    .eq('status', 'open')
+
+  const level = conflictLevel(evaluation.conflicts)
+  const eligible = !['hard', 'critical', 'blocked'].includes(level)
+
+  if (evaluation.conflicts.length > 0) {
+    const { error: conflictError } = await supabaseAdmin.from('planning_conflicts').insert(evaluation.conflicts.map((conflict) => ({
+      company_id: params.companyId,
+      planning_draft_id: params.draftId,
+      planning_draft_item_id: params.itemId,
+      task_id: params.taskId,
+      staff_profile_id: params.staffProfileId,
+      team_id: params.teamId ?? (staff as any)?.primary_team_id ?? null,
+      shift_id: params.shiftId,
+      conflict_type: conflict.conflictType,
+      severity: conflict.severity,
+      status: 'open',
+      message: conflict.message,
+      details: { ...(conflict.details ?? {}), recalculatedBy: params.actorUserId, recalculatedAt: new Date().toISOString() },
+      project_id: (task as any)?.project_id ?? null,
+      project_phase_id: (task as any)?.project_phase_id ?? null,
+      project_work_item_id: (task as any)?.project_work_item_id ?? null,
+    })))
+    if (conflictError) throw new Error(conflictError.message)
+  }
+
+  return {
+    task,
+    staff,
+    shift,
+    evaluation,
+    conflictLevel: level,
+    eligible,
+    rejectionReason: eligible ? null : evaluation.rejectionReason,
+  }
+}
+
+export async function createAiPlanningAssistantRunAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att använda AI-planeringsassistenten')
+  const prompt = value(formData, 'prompt')
+  if (!prompt) throw new Error('Skriv vad assistenten ska planera.')
+
+  const intent = interpretAiPlanningPrompt({
+    prompt,
+    explicitDateFrom: value(formData, 'date_from'),
+    explicitDateTo: value(formData, 'date_to'),
+    teamId: value(formData, 'team_id'),
+    staffProfileId: value(formData, 'staff_profile_id'),
+    taskTypeId: value(formData, 'task_type_id'),
+    projectId: value(formData, 'project_id'),
+    areaLabel: value(formData, 'area_label'),
+    unscheduledOnly: value(formData, 'unscheduled_only') ? value(formData, 'unscheduled_only') !== 'false' : null,
+    includeLockedAssignments: value(formData, 'include_locked_assignments') ? value(formData, 'include_locked_assignments') !== 'false' : null,
+  })
+
+  const { data: assistantRequest, error: requestError } = await supabaseAdmin
+    .from('planning_ai_requests')
+    .insert({
+      company_id: auth.membership!.companyId,
+      prompt,
+      interpreted_intent: intent as any,
+      status: 'running',
+      requested_by: auth.userId,
+    })
+    .select('id')
+    .single()
+  if (requestError) throw new Error(requestError.message)
+
+  try {
+    const result = await createPlanningRunWithDraft({
+      ...planningInputFromIntent({
+        companyId: auth.membership!.companyId,
+        actorUserId: auth.userId,
+        prompt,
+        intent,
+        name: value(formData, 'name'),
+        industryType: auth.membership?.industryType ?? null,
+      }),
+      sourceId: assistantRequest.id,
+    })
+
+    await Promise.all([
+      supabaseAdmin
+        .from('planning_ai_requests')
+        .update({
+          status: 'completed',
+          planning_run_id: result.runId,
+          planning_draft_id: result.draftId,
+          result_summary: result as any,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', assistantRequest.id)
+        .eq('company_id', auth.membership!.companyId),
+      supabaseAdmin
+        .from('planning_runs')
+        .update({ ai_request_id: assistantRequest.id })
+        .eq('id', result.runId)
+        .eq('company_id', auth.membership!.companyId),
+      supabaseAdmin
+        .from('planning_drafts')
+        .update({ ai_request_id: assistantRequest.id })
+        .eq('id', result.draftId)
+        .eq('company_id', auth.membership!.companyId),
+    ])
+
+    await audit(auth.membership!.companyId, auth.userId, 'create', 'planning_ai_request', assistantRequest.id, { prompt, intent, result })
+    revalidatePath('/planning')
+    revalidatePath('/planning/assistant')
+    redirect(`/planning/runs/${result.runId}`)
+  } catch (error) {
+    await supabaseAdmin
+      .from('planning_ai_requests')
+      .update({ status: 'failed', error_message: errorMessage(error, 'AI-planeringsassistenten kunde inte skapa körningen.'), completed_at: new Date().toISOString() })
+      .eq('id', assistantRequest.id)
+      .eq('company_id', auth.membership!.companyId)
+    throw error
+  }
+}
+
 export async function createPlanningRunAction(formData: FormData) {
   const auth = await requireMembership('planner', 'att skapa planeringskörning')
   const dateFrom = value(formData, 'date_from')
@@ -1645,26 +1793,132 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
   const draftId = value(formData, 'planning_draft_id')
   if (!itemId || !draftId) throw new Error('Planeringsrad saknas.')
 
+  const { data: currentItem, error: currentError } = await supabaseAdmin
+    .from('planning_draft_items')
+    .select('id, task_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, explanation, is_locked, locked_reason')
+    .eq('id', itemId)
+    .eq('planning_draft_id', draftId)
+    .eq('company_id', auth.membership!.companyId)
+    .maybeSingle()
+  if (currentError) throw new Error(currentError.message)
+  if (!currentItem) throw new Error('Planeringsraden kunde inte hittas.')
+
+  const staffProfileId = value(formData, 'staff_profile_id') ?? (currentItem as any).staff_profile_id ?? null
+  const teamId = value(formData, 'team_id') ?? (currentItem as any).team_id ?? null
+  const shiftId = value(formData, 'shift_id') ?? (currentItem as any).shift_id ?? null
+  const plannedStartAt = value(formData, 'planned_start_at') ?? (currentItem as any).planned_start_at
+  const plannedEndAt = value(formData, 'planned_end_at') ?? (currentItem as any).planned_end_at
+
+  if (!staffProfileId && !teamId) throw new Error('Planeringsraden måste ha personal eller team.')
+  if (!plannedStartAt || !plannedEndAt) throw new Error('Start och sluttid krävs.')
+  if (new Date(plannedEndAt) <= new Date(plannedStartAt)) throw new Error('Sluttid måste vara efter starttid.')
+
+  const recalculated = await replaceDraftItemConflicts({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    draftId,
+    itemId,
+    taskId: (currentItem as any).task_id,
+    staffProfileId,
+    teamId,
+    shiftId,
+    plannedStartAt,
+    plannedEndAt,
+  })
+
   const { error } = await supabaseAdmin
     .from('planning_draft_items')
     .update({
-      staff_profile_id: value(formData, 'staff_profile_id'),
-      team_id: value(formData, 'team_id'),
-      shift_id: value(formData, 'shift_id'),
-      planned_start_at: value(formData, 'planned_start_at'),
-      planned_end_at: value(formData, 'planned_end_at'),
-      status: value(formData, 'status') ?? 'proposed',
-      is_locked: value(formData, 'is_locked') === 'true',
-      locked_reason: value(formData, 'locked_reason'),
-      explanation: value(formData, 'explanation'),
-      metadata: { manual_edit: true, edited_at: new Date().toISOString() },
+      staff_profile_id: staffProfileId,
+      team_id: teamId ?? (recalculated.staff as any)?.primary_team_id ?? null,
+      shift_id: shiftId,
+      planned_start_at: plannedStartAt,
+      planned_end_at: plannedEndAt,
+      status: value(formData, 'status') ?? (currentItem as any).status ?? 'proposed',
+      score: recalculated.evaluation.score,
+      eligible: recalculated.eligible,
+      conflict_level: recalculated.conflictLevel,
+      rejection_reason: recalculated.rejectionReason,
+      is_locked: value(formData, 'is_locked') ? value(formData, 'is_locked') === 'true' : Boolean((currentItem as any).is_locked),
+      locked_reason: value(formData, 'locked_reason') ?? (currentItem as any).locked_reason ?? null,
+      explanation: value(formData, 'explanation') ?? recalculated.evaluation.explanation,
+      metadata: { manual_edit: true, edited_at: new Date().toISOString(), recalculated: true, scoreBreakdown: recalculated.evaluation.breakdown },
     })
     .eq('id', itemId)
     .eq('planning_draft_id', draftId)
     .eq('company_id', auth.membership!.companyId)
 
   if (error) throw new Error(error.message)
-  await audit(auth.membership!.companyId, auth.userId, 'update', 'planning_draft_item', itemId, { draftId })
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'planning_draft_item', itemId, { draftId, score: recalculated.evaluation.score, conflictLevel: recalculated.conflictLevel })
+  revalidatePath('/planning')
+  revalidatePath('/planning/runs')
+}
+
+export async function applyCandidateToPlanningDraftItemAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att byta kandidat på planeringsrad')
+  const itemId = value(formData, 'planning_draft_item_id')
+  const draftId = value(formData, 'planning_draft_id')
+  const candidateId = value(formData, 'candidate_id')
+  if (!itemId || !draftId || !candidateId) throw new Error('Kandidat, draft och rad krävs.')
+
+  const [{ data: item }, { data: candidate }] = await Promise.all([
+    supabaseAdmin
+      .from('planning_draft_items')
+      .select('id, task_id')
+      .eq('id', itemId)
+      .eq('planning_draft_id', draftId)
+      .eq('company_id', auth.membership!.companyId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('assignment_candidates')
+      .select('id, task_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, score, eligible, rejection_reason, explanation')
+      .eq('id', candidateId)
+      .eq('planning_draft_id', draftId)
+      .eq('company_id', auth.membership!.companyId)
+      .maybeSingle(),
+  ])
+
+  if (!item) throw new Error('Planeringsraden kunde inte hittas.')
+  if (!candidate) throw new Error('Kandidaten kunde inte hittas.')
+  if ((item as any).task_id !== (candidate as any).task_id) throw new Error('Kandidaten hör inte till vald planeringsrad.')
+  if (!(candidate as any).planned_start_at || !(candidate as any).planned_end_at) throw new Error('Kandidaten saknar planerad tid.')
+
+  const recalculated = await replaceDraftItemConflicts({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    draftId,
+    itemId,
+    taskId: (candidate as any).task_id,
+    staffProfileId: (candidate as any).staff_profile_id ?? null,
+    teamId: (candidate as any).team_id ?? null,
+    shiftId: (candidate as any).shift_id ?? null,
+    plannedStartAt: (candidate as any).planned_start_at,
+    plannedEndAt: (candidate as any).planned_end_at,
+  })
+
+  const { error } = await supabaseAdmin
+    .from('planning_draft_items')
+    .update({
+      candidate_id: candidateId,
+      staff_profile_id: (candidate as any).staff_profile_id ?? null,
+      team_id: (candidate as any).team_id ?? null,
+      shift_id: (candidate as any).shift_id ?? null,
+      planned_start_at: (candidate as any).planned_start_at,
+      planned_end_at: (candidate as any).planned_end_at,
+      status: 'proposed',
+      score: recalculated.evaluation.score,
+      eligible: recalculated.eligible,
+      conflict_level: recalculated.conflictLevel,
+      rejection_reason: recalculated.rejectionReason,
+      explanation: recalculated.evaluation.explanation,
+      metadata: { appliedCandidateId: candidateId, appliedAt: new Date().toISOString(), scoreBreakdown: recalculated.evaluation.breakdown },
+    })
+    .eq('id', itemId)
+    .eq('planning_draft_id', draftId)
+    .eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'apply', 'assignment_candidate', candidateId, { itemId, draftId, score: recalculated.evaluation.score, conflictLevel: recalculated.conflictLevel })
   revalidatePath('/planning')
   revalidatePath('/planning/runs')
 }
