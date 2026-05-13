@@ -1967,3 +1967,501 @@ export async function refreshAvailabilityConflictsAction(formData: FormData) {
   revalidatePath('/availability')
   revalidatePath('/schedule')
 }
+
+function formValues(formData: FormData, key: string) {
+  return formData.getAll(key).filter((item): item is string => typeof item === 'string' && item.trim() !== '').map((item) => item.trim())
+}
+
+function weekdaysFromForm(formData: FormData) {
+  const selected = formValues(formData, 'weekdays').map((day) => Number(day)).filter((day) => day >= 1 && day <= 7)
+  return selected.length ? selected : [1, 2, 3, 4, 5]
+}
+
+function dateRange(fromDate: string, toDate: string) {
+  const dates: string[] = []
+  const cursor = new Date(`${fromDate}T00:00:00`)
+  const end = new Date(`${toDate}T00:00:00`)
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return dates
+}
+
+function weekdayNumber(dateString: string) {
+  const day = new Date(`${dateString}T00:00:00`).getDay()
+  return day === 0 ? 7 : day
+}
+
+function combineShiftPresetDateTime(date: string, startTime: string, endTime: string) {
+  const startsAt = `${date}T${startTime.slice(0, 5)}:00`
+  const endDate = new Date(`${date}T00:00:00`)
+  if (endTime.slice(0, 5) <= startTime.slice(0, 5)) endDate.setDate(endDate.getDate() + 1)
+  const endDateString = endDate.toISOString().slice(0, 10)
+  const endsAt = `${endDateString}T${endTime.slice(0, 5)}:00`
+  return { startsAt, endsAt }
+}
+
+function statusForBulk(valueFromForm: string | null) {
+  return ['draft', 'planned', 'confirmed'].includes(valueFromForm ?? '') ? valueFromForm : 'draft'
+}
+
+async function loadShiftPresetForCompany(companyId: string, presetId: string | null, industryType: string | null) {
+  if (!presetId || presetId === 'custom') return null
+  const { data } = await supabaseAdmin
+    .from('shift_presets')
+    .select('*')
+    .eq('id', presetId)
+    .is('archived_at', null)
+    .or(`company_id.eq.${companyId},preset_scope.eq.system`)
+    .maybeSingle()
+
+  if (!data) return null
+  if (data.preset_scope === 'system' && data.industry_type && industryType && data.industry_type !== industryType) return null
+  return data as any
+}
+
+async function createShiftFromBulkInput(params: {
+  companyId: string
+  actorUserId: string
+  bulkRunId?: string | null
+  bulkGroupId?: string | null
+  presetId?: string | null
+  source: string
+  title: string | null
+  shiftDate: string
+  startTime: string
+  endTime: string
+  staffProfileId: string | null
+  teamId: string | null
+  status: string
+  breakMinutes: number
+  bufferMinutes: number
+  plannedMinutes?: number
+  transportMode: string
+  startLocationType: string
+  startAddressText: string | null
+  endLocationType: string
+  endAddressText: string | null
+  roleLabel?: string | null
+  planningLocked?: boolean
+  notes?: string | null
+  conflictMode?: string
+}) {
+  const { startsAt, endsAt } = combineShiftPresetDateTime(params.shiftDate, params.startTime, params.endTime)
+  const cap = computeCapacity(startsAt, endsAt, params.breakMinutes, params.bufferMinutes)
+  const plannedMinutes = params.plannedMinutes ?? 0
+  const conflicts: string[] = []
+
+  if (params.staffProfileId) {
+    const [{ data: overlaps }, { data: absences }] = await Promise.all([
+      supabaseAdmin
+        .from('shifts')
+        .select('id')
+        .eq('company_id', params.companyId)
+        .eq('staff_profile_id', params.staffProfileId)
+        .is('archived_at', null)
+        .lt('starts_at', endsAt)
+        .gt('ends_at', startsAt)
+        .limit(5),
+      supabaseAdmin
+        .from('absences')
+        .select('id')
+        .eq('company_id', params.companyId)
+        .eq('staff_profile_id', params.staffProfileId)
+        .eq('affects_planning', true)
+        .is('archived_at', null)
+        .lt('starts_at', endsAt)
+        .gt('ends_at', startsAt)
+        .limit(5),
+    ])
+    if (overlaps?.length) conflicts.push('Överlappande pass')
+    if (absences?.length) conflicts.push('Frånvaro överlappar')
+  }
+
+  const hasBlockingConflict = conflicts.length > 0
+  if ((params.conflictMode === 'skip_conflicts' || params.conflictMode === 'skip_blocking') && hasBlockingConflict) {
+    return { shiftId: null, skipped: true, conflictSummary: conflicts.join(', '), startsAt, endsAt }
+  }
+
+  const { data, error } = await supabaseAdmin.from('shifts').insert({
+    company_id: params.companyId,
+    staff_profile_id: params.staffProfileId,
+    team_id: params.teamId,
+    title: params.title,
+    shift_date: params.shiftDate,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    status: params.status,
+    role_label: params.roleLabel ?? null,
+    transport_mode: params.transportMode,
+    start_location_type: params.startLocationType,
+    start_address_text: params.startAddressText,
+    end_location_type: params.endLocationType,
+    end_address_text: params.endAddressText,
+    total_minutes: cap.total,
+    break_minutes: params.breakMinutes,
+    buffer_minutes: params.bufferMinutes,
+    capacity_minutes: cap.capacity,
+    planned_minutes: plannedMinutes,
+    remaining_minutes: Math.max(0, cap.capacity - plannedMinutes),
+    planning_locked: Boolean(params.planningLocked),
+    locked_by: params.planningLocked ? params.actorUserId : null,
+    locked_at: params.planningLocked ? new Date().toISOString() : null,
+    source: params.source,
+    created_from: params.source,
+    bulk_group_id: params.bulkGroupId,
+    bulk_run_id: params.bulkRunId,
+    source_preset_id: params.presetId,
+    notes: params.notes,
+    created_by: params.actorUserId,
+    updated_by: params.actorUserId,
+  }).select('id').single()
+
+  if (error) throw new Error(error.message)
+  return { shiftId: data.id as string, skipped: false, conflictSummary: conflicts.join(', '), startsAt, endsAt }
+}
+
+export async function createShiftPresetAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa passpreset')
+  const name = value(formData, 'name')
+  const startTime = value(formData, 'start_time')
+  const endTime = value(formData, 'end_time')
+  if (!name || !startTime || !endTime) throw new Error('Namn, starttid och sluttid krävs.')
+
+  const { data, error } = await supabaseAdmin.from('shift_presets').insert({
+    company_id: auth.membership!.companyId,
+    industry_type: value(formData, 'industry_type') ?? auth.membership?.industryType ?? null,
+    operational_model: auth.membership?.operationalModel ?? null,
+    name,
+    description: value(formData, 'description'),
+    preset_scope: 'company',
+    preset_type: value(formData, 'preset_type') ?? 'custom',
+    start_time: startTime,
+    end_time: endTime,
+    break_minutes: Number(value(formData, 'break_minutes') ?? 0),
+    buffer_minutes: Number(value(formData, 'buffer_minutes') ?? 0),
+    transport_mode: value(formData, 'transport_mode') ?? 'car',
+    start_location_type: value(formData, 'start_location_type') ?? 'company_base',
+    start_address_text: value(formData, 'start_address_text'),
+    end_location_type: value(formData, 'end_location_type') ?? 'company_base',
+    end_address_text: value(formData, 'end_address_text'),
+    default_status: statusForBulk(value(formData, 'default_status')),
+    capacity_minutes: value(formData, 'capacity_minutes') ? Number(value(formData, 'capacity_minutes')) : null,
+    min_staff: value(formData, 'min_staff') ? Number(value(formData, 'min_staff')) : null,
+    max_staff: value(formData, 'max_staff') ? Number(value(formData, 'max_staff')) : null,
+    default_team_id: value(formData, 'default_team_id'),
+    metadata: { customLabel: value(formData, 'custom_label') },
+    is_favorite: value(formData, 'is_favorite') === 'true',
+    is_active: true,
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  }).select('id').single()
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'shift_preset', data.id, { name })
+  revalidatePath('/availability/presets')
+  redirect(`/availability/presets/${data.id}`)
+}
+
+export async function updateShiftPresetAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att uppdatera passpreset')
+  const id = value(formData, 'id')
+  const name = value(formData, 'name')
+  const startTime = value(formData, 'start_time')
+  const endTime = value(formData, 'end_time')
+  if (!id || !name || !startTime || !endTime) throw new Error('Preset-id, namn, starttid och sluttid krävs.')
+
+  const { error } = await supabaseAdmin.from('shift_presets').update({
+    name,
+    description: value(formData, 'description'),
+    industry_type: value(formData, 'industry_type') ?? auth.membership?.industryType ?? null,
+    preset_type: value(formData, 'preset_type') ?? 'custom',
+    start_time: startTime,
+    end_time: endTime,
+    break_minutes: Number(value(formData, 'break_minutes') ?? 0),
+    buffer_minutes: Number(value(formData, 'buffer_minutes') ?? 0),
+    transport_mode: value(formData, 'transport_mode') ?? 'car',
+    start_location_type: value(formData, 'start_location_type') ?? 'company_base',
+    start_address_text: value(formData, 'start_address_text'),
+    end_location_type: value(formData, 'end_location_type') ?? 'company_base',
+    end_address_text: value(formData, 'end_address_text'),
+    default_status: statusForBulk(value(formData, 'default_status')),
+    capacity_minutes: value(formData, 'capacity_minutes') ? Number(value(formData, 'capacity_minutes')) : null,
+    min_staff: value(formData, 'min_staff') ? Number(value(formData, 'min_staff')) : null,
+    max_staff: value(formData, 'max_staff') ? Number(value(formData, 'max_staff')) : null,
+    default_team_id: value(formData, 'default_team_id'),
+    is_favorite: value(formData, 'is_favorite') === 'true',
+    updated_by: auth.userId,
+  }).eq('id', id).eq('company_id', auth.membership!.companyId).eq('preset_scope', 'company')
+
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'shift_preset', id, { name })
+  revalidatePath('/availability/presets')
+  revalidatePath(`/availability/presets/${id}`)
+}
+
+export async function archiveShiftPresetAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att arkivera passpreset')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Preset-id saknas.')
+  const { error } = await supabaseAdmin.from('shift_presets').update({ archived_at: new Date().toISOString(), is_active: false, updated_by: auth.userId }).eq('id', id).eq('company_id', auth.membership!.companyId).eq('preset_scope', 'company')
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'archive', 'shift_preset', id)
+  revalidatePath('/availability/presets')
+  redirect('/availability/presets')
+}
+
+export async function duplicateSystemShiftPresetAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att duplicera systempreset')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Preset-id saknas.')
+  const { data: preset } = await supabaseAdmin.from('shift_presets').select('*').eq('id', id).eq('preset_scope', 'system').is('archived_at', null).maybeSingle()
+  if (!preset) throw new Error('Systempreset kunde inte hittas.')
+  const { data, error } = await supabaseAdmin.from('shift_presets').insert({
+    company_id: auth.membership!.companyId,
+    industry_type: preset.industry_type ?? auth.membership?.industryType ?? null,
+    operational_model: auth.membership?.operationalModel ?? null,
+    name: `${preset.name} - egen`,
+    description: preset.description,
+    preset_scope: 'company',
+    preset_type: preset.preset_type,
+    start_time: preset.start_time,
+    end_time: preset.end_time,
+    break_minutes: preset.break_minutes,
+    buffer_minutes: preset.buffer_minutes,
+    transport_mode: preset.transport_mode,
+    start_location_type: preset.start_location_type,
+    start_address_text: preset.start_address_text,
+    end_location_type: preset.end_location_type,
+    end_address_text: preset.end_address_text,
+    default_status: preset.default_status,
+    capacity_minutes: preset.capacity_minutes,
+    min_staff: preset.min_staff,
+    max_staff: preset.max_staff,
+    metadata: preset.metadata ?? {},
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  }).select('id').single()
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'duplicate', 'shift_preset', data.id, { sourcePresetId: id })
+  revalidatePath('/availability/presets')
+  redirect(`/availability/presets/${data.id}`)
+}
+
+export async function bulkCreateShiftsAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa pass i bulk')
+  const companyId = auth.membership!.companyId
+  const presetId = value(formData, 'preset_id')
+  const fromDate = value(formData, 'date_from') ?? value(formData, 'shift_date')
+  const toDate = value(formData, 'date_to') ?? fromDate
+  if (!fromDate || !toDate) throw new Error('Datumintervall krävs.')
+
+  const preset = await loadShiftPresetForCompany(companyId, presetId, auth.membership?.industryType ?? null)
+  const customName = value(formData, 'custom_name')
+  const title = preset?.name ?? customName ?? 'Eget pass'
+  const startTime = preset?.start_time ? String(preset.start_time).slice(0, 5) : value(formData, 'start_time')
+  const endTime = preset?.end_time ? String(preset.end_time).slice(0, 5) : value(formData, 'end_time')
+  if (!startTime || !endTime) throw new Error('Start- och sluttid krävs.')
+
+  if (value(formData, 'save_custom_as_preset') === 'true' && !preset && customName) {
+    await supabaseAdmin.from('shift_presets').insert({
+      company_id: companyId,
+      industry_type: auth.membership?.industryType ?? null,
+      operational_model: auth.membership?.operationalModel ?? null,
+      name: customName,
+      description: 'Skapad från snabbflödet.',
+      preset_scope: 'company',
+      preset_type: 'custom',
+      start_time: startTime,
+      end_time: endTime,
+      break_minutes: Number(value(formData, 'break_minutes') ?? 0),
+      buffer_minutes: Number(value(formData, 'buffer_minutes') ?? 0),
+      transport_mode: value(formData, 'transport_mode') ?? 'car',
+      start_location_type: value(formData, 'start_location_type') ?? 'company_base',
+      end_location_type: value(formData, 'end_location_type') ?? 'company_base',
+      default_status: statusForBulk(value(formData, 'status')),
+      created_by: auth.userId,
+      updated_by: auth.userId,
+    })
+  }
+
+  const selectedStaffIds = formValues(formData, 'staff_profile_ids')
+  const selectedTeamIds = formValues(formData, 'team_ids')
+  const includeTeamMembers = value(formData, 'include_team_members') === 'true'
+  const weekdays = weekdaysFromForm(formData)
+  const conflictMode = value(formData, 'conflict_mode') ?? 'skip_blocking'
+  const bulkGroupId = crypto.randomUUID()
+  const breakMinutes = Number(preset?.break_minutes ?? value(formData, 'break_minutes') ?? 0)
+  const bufferMinutes = Number(preset?.buffer_minutes ?? value(formData, 'buffer_minutes') ?? 0)
+  const transportMode = preset?.transport_mode ?? value(formData, 'transport_mode') ?? 'car'
+  const status = statusForBulk(value(formData, 'status') ?? preset?.default_status ?? null) ?? 'draft'
+
+  const staffIds = new Set(selectedStaffIds)
+  if (includeTeamMembers && selectedTeamIds.length) {
+    const { data: memberships } = await supabaseAdmin
+      .from('staff_profiles')
+      .select('id, primary_team_id')
+      .eq('company_id', companyId)
+      .is('archived_at', null)
+      .in('primary_team_id', selectedTeamIds)
+    for (const member of memberships ?? []) staffIds.add((member as any).id)
+  }
+
+  const targets: Array<{ staffProfileId: string | null; teamId: string | null }> = []
+  for (const staffId of staffIds) targets.push({ staffProfileId: staffId, teamId: selectedTeamIds[0] ?? preset?.default_team_id ?? null })
+  if (!targets.length && selectedTeamIds.length) {
+    for (const teamId of selectedTeamIds) targets.push({ staffProfileId: null, teamId })
+  }
+  if (!targets.length) throw new Error('Välj minst en personal eller ett team.')
+
+  const targetStaffIds = [...staffIds]
+  const { data: bulkRun, error: bulkError } = await supabaseAdmin.from('shift_bulk_runs').insert({
+    company_id: companyId,
+    preset_id: preset?.id ?? null,
+    name: value(formData, 'bulk_name') ?? title,
+    date_from: fromDate,
+    date_to: toDate,
+    weekdays,
+    target_type: targetStaffIds.length && selectedTeamIds.length ? 'mixed' : targetStaffIds.length ? 'staff' : 'team',
+    target_staff_ids: targetStaffIds,
+    target_team_ids: selectedTeamIds,
+    default_status: status,
+    conflict_mode: conflictMode,
+    created_by: auth.userId,
+  }).select('id').single()
+  if (bulkError) throw new Error(bulkError.message)
+
+  let created = 0
+  let skipped = 0
+  let conflicts = 0
+  const itemRows: any[] = []
+
+  for (const dateString of dateRange(fromDate, toDate)) {
+    if (!weekdays.includes(weekdayNumber(dateString))) continue
+    for (const target of targets) {
+      const result = await createShiftFromBulkInput({
+        companyId,
+        actorUserId: auth.userId,
+        bulkRunId: bulkRun.id,
+        bulkGroupId,
+        presetId: preset?.id ?? null,
+        source: preset ? 'shift_preset' : 'quick_custom',
+        title,
+        shiftDate: dateString,
+        startTime,
+        endTime,
+        staffProfileId: target.staffProfileId,
+        teamId: target.teamId,
+        status,
+        breakMinutes,
+        bufferMinutes,
+        transportMode,
+        startLocationType: preset?.start_location_type ?? value(formData, 'start_location_type') ?? 'company_base',
+        startAddressText: preset?.start_address_text ?? value(formData, 'start_address_text'),
+        endLocationType: preset?.end_location_type ?? value(formData, 'end_location_type') ?? 'company_base',
+        endAddressText: preset?.end_address_text ?? value(formData, 'end_address_text'),
+        roleLabel: value(formData, 'role_label'),
+        planningLocked: value(formData, 'planning_locked') === 'true',
+        notes: value(formData, 'notes'),
+        conflictMode,
+      })
+      if (result.conflictSummary) conflicts += 1
+      if (result.skipped) skipped += 1
+      else created += 1
+      itemRows.push({
+        company_id: companyId,
+        bulk_run_id: bulkRun.id,
+        shift_id: result.shiftId,
+        staff_profile_id: target.staffProfileId,
+        team_id: target.teamId,
+        shift_date: dateString,
+        starts_at: result.startsAt,
+        ends_at: result.endsAt,
+        status: result.skipped ? 'skipped' : 'created',
+        conflict_level: result.conflictSummary ? 'warning' : null,
+        conflict_summary: result.conflictSummary || null,
+        skipped_reason: result.skipped ? result.conflictSummary || 'Skippad enligt konfliktregel' : null,
+      })
+    }
+  }
+
+  if (itemRows.length) {
+    const { error: itemError } = await supabaseAdmin.from('shift_bulk_run_items').insert(itemRows)
+    if (itemError) throw new Error(itemError.message)
+  }
+
+  await supabaseAdmin.from('shift_bulk_runs').update({
+    created_count: created,
+    skipped_count: skipped,
+    conflict_count: conflicts,
+    summary: { targetCount: targets.length, weekdayCount: weekdays.length, requestedDates: dateRange(fromDate, toDate).length, bulkGroupId },
+  }).eq('id', bulkRun.id).eq('company_id', companyId)
+
+  await audit(companyId, auth.userId, 'bulk_create', 'shifts', bulkRun.id, { created, skipped, conflicts, presetId: preset?.id ?? null })
+  await refreshAvailabilityConflicts(companyId, auth.userId, null, null)
+  revalidatePath('/schedule')
+  revalidatePath('/availability/presets')
+  redirect(`/schedule?bulk_run=${bulkRun.id}`)
+}
+
+export async function quickAbsenceAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att skapa snabbfrånvaro')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const date = value(formData, 'absence_date') ?? new Date().toISOString().slice(0, 10)
+  if (!staffProfileId) throw new Error('Personal krävs.')
+  const reason = value(formData, 'reason') ?? 'Sjuk/frånvarande'
+  const startsAt = `${date}T00:00:00`
+  const endsAt = `${date}T23:59:00`
+
+  let absenceTypeId = value(formData, 'absence_type_id')
+  if (!absenceTypeId) {
+    const { data: type } = await supabaseAdmin.from('absence_types').select('id').eq('company_id', auth.membership!.companyId).eq('code', 'sick').maybeSingle()
+    absenceTypeId = type?.id ?? null
+  }
+
+  const { data, error } = await supabaseAdmin.from('absences').insert({
+    company_id: auth.membership!.companyId,
+    staff_profile_id: staffProfileId,
+    absence_type_id: absenceTypeId,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    is_all_day: true,
+    status: 'approved',
+    affects_planning: true,
+    reason,
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  }).select('id').single()
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'quick_create', 'absence', data.id, { staffProfileId, date })
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, staffProfileId, null)
+  revalidatePath('/absences')
+  revalidatePath('/schedule')
+}
+
+export async function bulkUpdateShiftsAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att massändra pass')
+  const shiftIds = formValues(formData, 'shift_ids')
+  if (!shiftIds.length) throw new Error('Välj minst ett pass.')
+  const update: Record<string, unknown> = { updated_by: auth.userId }
+  const status = value(formData, 'status')
+  if (status) update.status = status
+  const teamId = value(formData, 'team_id')
+  if (teamId) update.team_id = teamId
+  const planningLocked = value(formData, 'planning_locked')
+  if (planningLocked) {
+    update.planning_locked = planningLocked === 'true'
+    update.locked_by = planningLocked === 'true' ? auth.userId : null
+    update.locked_at = planningLocked === 'true' ? new Date().toISOString() : null
+  }
+  if (value(formData, 'archive') === 'true') {
+    update.archived_at = new Date().toISOString()
+    update.status = 'archived'
+  }
+  const { error } = await supabaseAdmin.from('shifts').update(update).eq('company_id', auth.membership!.companyId).in('id', shiftIds)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'bulk_update', 'shifts', null, { count: shiftIds.length, update })
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, null, null)
+  revalidatePath('/schedule')
+}

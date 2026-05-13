@@ -14,6 +14,7 @@ const primaryNav = [
   { href: '/absences', label: 'Frånvaro', description: 'Sjukdom, semester och blockeringar' },
   { href: '/availability', label: 'Tillgänglighet', description: 'Block, konflikter och planeringsunderlag' },
   { href: '/availability/templates', label: 'Tillgänglighetsmallar', description: 'Personal- och teammallar' },
+  { href: '/availability/presets', label: 'Passpresets', description: 'Snabbpass och bulk-schema' },
   { href: '/settings/skills', label: 'Kompetenser', description: 'Certifikat och regelmotor' },
   { href: '/work-orders', label: 'Arbetsorder', description: 'Samlad arbetsorderstyrning' },
   { href: '/property', label: 'Fastighet', description: 'Hyresvärd, objekt och felanmälan' },
