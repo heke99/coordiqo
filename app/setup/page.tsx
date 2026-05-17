@@ -24,6 +24,8 @@ const industryOptions = [
   { value: 'staffing', label: 'Bemanning' },
   { value: 'security', label: 'Bevakning / patrull' },
   { value: 'construction', label: 'Bygg' },
+  { value: 'municipality', label: 'Kommunal verksamhet' },
+  { value: 'courier', label: 'Bud / kurir / leverans' },
   { value: 'other', label: 'Annan verksamhet' },
 ]
 
@@ -36,6 +38,7 @@ const modelOptions = [
   { value: 'patrol_based', label: 'Patrullbaserad' },
   { value: 'team_based', label: 'Teambaserad' },
   { value: 'project_based', label: 'Projektbaserad' },
+  { value: 'delivery_based', label: 'Leveransbaserad' },
   { value: 'on_call', label: 'Jourbaserad' },
 ]
 
@@ -194,7 +197,7 @@ export default function SetupPage() {
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
                 Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen tenant,
-                grundinställningar och ditt första team direkt. Objektmodellen låses inte här, utan styrs av bransch och kan anpassas per företag.
+                grundinställningar och ditt första team direkt. Den operativa modellen är bara huvudfokus för första vyn. Hela systemet, alla moduler och alla objektflöden finns kvar och kan användas efter onboarding.
               </p>
             </div>
 
@@ -287,7 +290,7 @@ export default function SetupPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Operativ modell</label>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">Primär operativ modell</label>
                 <select
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
                   value={form.operationalModel}
@@ -299,6 +302,7 @@ export default function SetupPage() {
                     </option>
                   ))}
                 </select>
+                <p className="mt-1.5 text-xs leading-5 text-slate-500">Detta låser inte systemet. Det styr bara vilken vy, terminologi och mallar som prioriteras först.</p>
               </div>
             </div>
 

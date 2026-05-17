@@ -36,7 +36,7 @@ export default async function PlanningTemplatesPage() {
     <AppShell
       auth={auth}
       title="Planeringsmallar"
-      subtitle="Batch 8C: spara återkommande planeringsmönster och skapa nya utkast från mallar."
+      subtitle="Spara återkommande planeringsmönster och skapa nya utkast från mallar."
       actions={<Link href="/planning" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link>}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_0.75fr]">
@@ -61,7 +61,7 @@ export default async function PlanningTemplatesPage() {
             </section>
           )) : (
             <EmptyState
-              eyebrow="Batch 8C"
+              eyebrow="Planeringsmallar"
               title="Inga planeringsmallar ännu"
               description="Öppna en planeringskörning, granska utkastet och spara det som mall. Då kan samma uppdrag/personer/tider återanvändas."
               action={<Link href="/planning/runs" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Visa körningar</Link>}

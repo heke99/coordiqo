@@ -134,7 +134,7 @@ export default async function ResourcesPage({ searchParams }: ResourcesPageProps
         {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error.message}</div>}
 
         {!resources?.length ? (
-          <EmptyState eyebrow="Batch 8F" title="Lägg in första resursen" description="Resurser kan vara nycklar, bilar, cyklar, verktyg, maskiner, passerkort, medicinsk utrustning eller andra branschspecifika objekt. Planeringsmotorn kan sedan skapa ansvar och personalen kan kvittera i mobilen." action={canManage ? <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white" href="/resources/new">Skapa resurs</Link> : undefined} />
+          <EmptyState eyebrow="Resurser" title="Lägg in första resursen" description="Resurser kan vara nycklar, bilar, cyklar, verktyg, maskiner, passerkort, medicinsk utrustning eller andra branschspecifika objekt. Planeringsmotorn kan sedan skapa ansvar och personalen kan kvittera i mobilen." action={canManage ? <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white" href="/resources/new">Skapa resurs</Link> : undefined} />
         ) : (
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {resources.map((resource: any) => {

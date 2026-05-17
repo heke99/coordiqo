@@ -32,7 +32,7 @@ export default async function NewProjectPage({ searchParams }: { searchParams: P
   const today = new Date().toISOString().slice(0, 10)
 
   return (
-    <AppShell auth={auth} title="Nytt projekt" subtitle="Skapa projekt från intake. Uppdrag skapas som oschemalagda och kan planeras via Batch 8." actions={<Link href="/projects" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Till projekt</Link>}>
+    <AppShell auth={auth} title="Nytt projekt" subtitle="Skapa projekt från intake. Uppdrag skapas som oschemalagda och kan planeras direkt via planeringsmotorn." actions={<Link href="/projects" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Till projekt</Link>}>
       <FormCard title="Projektintake" description="Välj mall, fyll i drivare som kvm/rum/fönster och låt systemet skapa arbetsmoment och uppdrag från reglerna i databasen.">
         <form action={createProjectAction} className="grid gap-5">
           <div className="grid gap-4 md:grid-cols-2">

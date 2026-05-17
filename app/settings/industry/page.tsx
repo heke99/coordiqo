@@ -4,7 +4,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
-import { INDUSTRY_PRESETS, OPERATIONAL_MODEL_LABELS, getIndustryPreset } from '@/lib/industry/config'
+import { INDUSTRY_PRESETS, OPERATIONAL_MODEL_HELP, OPERATIONAL_MODEL_LABELS, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
 import { updateCompanyIndustrySettingsAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -42,12 +42,12 @@ export default async function IndustrySettingsPage() {
     <AppShell
       auth={auth}
       title="Branschmotor"
-      subtitle="Batch 8G: en engine som styr språk, presets, uppdragstyper, resurstyper, mobilflöden och planeringsregler per bransch."
+      subtitle="Välj företagets primära bransch och arbetsmodell. Det styr presets och språk, men låser inte bort resten av systemet."
     >
       <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         <section className="coordiqo-card p-5">
           <h2 className="text-lg font-semibold text-slate-950">Aktiv branschprofil</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Välj profil för företaget. Systemet använder fortfarande samma kärna, men anpassar ord, standardtyper, statusar och operationsflöden.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Välj den profil som bäst beskriver verksamheten just nu. Alla kärnmoduler fortsätter vara aktiva; profilen avgör främst vilka ord, mallar och standardflöden som prioriteras.</p>
 
           <form action={updateCompanyIndustrySettingsAction} className="mt-5 grid gap-4">
             <Field label="Bransch">
@@ -57,27 +57,28 @@ export default async function IndustrySettingsPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Operativ modell">
+            <Field label="Primär operativ modell">
               <select name="operational_model" defaultValue={selectedOperationalModel} className={selectClassName}>
                 {Object.entries(OPERATIONAL_MODEL_LABELS).map(([code, label]) => (
                   <option key={code} value={code}>{label}</option>
                 ))}
               </select>
             </Field>
-            <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Spara och installera presets</button>
+            <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Spara och synka presets</button>
           </form>
 
           <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-950">Nuvarande profil</p>
             <p className="mt-2 text-sm leading-6 text-slate-600">{activePreset.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {activePreset.operationalModels.map((model) => <StatusBadge key={model} status={OPERATIONAL_MODEL_LABELS[model]} />)}
+              {uniqueOperationalModels(selectedOperationalModel, activePreset.operationalModels).map((model) => <StatusBadge key={model} status={OPERATIONAL_MODEL_LABELS[model]} />)}
             </div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">Primär modell: {OPERATIONAL_MODEL_LABELS[selectedOperationalModel as keyof typeof OPERATIONAL_MODEL_LABELS] ?? selectedOperationalModel}. {OPERATIONAL_MODEL_HELP[selectedOperationalModel as keyof typeof OPERATIONAL_MODEL_HELP] ?? 'Modellen används som prioriterad vy, inte som en begränsning.'}</p>
           </div>
         </section>
 
         <section className="coordiqo-card p-5">
-          <h2 className="text-lg font-semibold text-slate-950">Vad profilen styr</h2>
+          <h2 className="text-lg font-semibold text-slate-950">Vad profilen synkar</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-3xl border border-slate-200 bg-white p-4">
               <p className="text-sm font-semibold text-slate-950">Terminologi</p>
@@ -107,14 +108,14 @@ export default async function IndustrySettingsPage() {
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <section className="coordiqo-card p-5">
           <h2 className="text-lg font-semibold text-slate-950">Uppdragstyper i företaget</h2>
-          <p className="mt-1 text-sm text-slate-600">När du sparar profilen skapas saknade standardtyper utan att ta bort egna typer.</p>
+          <p className="mt-1 text-sm text-slate-600">När du sparar skapas saknade standardtyper. Egna typer tas inte bort och gamla data ligger kvar.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {taskTypes?.length ? taskTypes.map((type: any) => <span key={type.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{type.name}</span>) : activePreset.taskTypes.map((name) => <span key={name} className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">{name}</span>)}
           </div>
         </section>
         <section className="coordiqo-card p-5">
           <h2 className="text-lg font-semibold text-slate-950">Resurstyper i företaget</h2>
-          <p className="mt-1 text-sm text-slate-600">Används av resursmotorn och AI-planeraren. Egna resurstyper ligger kvar.</p>
+          <p className="mt-1 text-sm text-slate-600">Används av resursmotorn och AI-planeraren. Egna resurstyper ligger kvar och kan kombineras med alla branscher.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {resourceTypes?.length ? resourceTypes.map((type: any) => <span key={type.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{type.name}</span>) : activePreset.resourceTypes.map((name) => <span key={name} className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">{name}</span>)}
           </div>

@@ -66,7 +66,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             </form>
           </section>
 
-          <FormCard title="Manuell tilldelning" description="Batch 8B: välj personal, team, pass och planerad tid. Hårda konflikter stoppar tilldelningen. Mjuka konflikter kan override:as med orsak.">
+          <FormCard title="Manuell tilldelning" description="Välj personal, team, pass och planerad tid. Hårda konflikter stoppar tilldelningen. Mjuka konflikter kan override:as med orsak.">
             <form action={createManualTaskAssignmentAction} className="grid gap-4">
               <input type="hidden" name="task_id" value={task.id} />
               <div className="grid gap-4 md:grid-cols-2">

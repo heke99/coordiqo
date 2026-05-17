@@ -68,7 +68,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             ))}
           </div>
         ) : (
-          <EmptyState eyebrow="Batch 5" title="Inga uppdrag ännu" description="Skapa första uppdraget och koppla det till objekt, team, personal och tidsfönster." action={<Link href="/tasks/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa uppdrag</Link>} />
+          <EmptyState eyebrow="Uppdrag" title="Inga uppdrag ännu" description="Skapa första uppdraget och koppla det till objekt, team, personal och tidsfönster." action={<Link href="/tasks/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa uppdrag</Link>} />
         )}
       </div>
     </AppShell>

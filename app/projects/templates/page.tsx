@@ -55,7 +55,7 @@ export default async function ProjectTemplatesPage() {
     <AppShell
       auth={auth}
       title="Projektmallar"
-      subtitle="Batch 8D: systempresets och egna företagsmallar med frågor, arbetsmoment och kalkylregler."
+      subtitle="Systempresets och egna företagsmallar med frågor, arbetsmoment och kalkylregler."
       actions={<div className="flex gap-2"><Link href="/projects" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Till projekt</Link><Link href="/projects/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Nytt projekt</Link></div>}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">

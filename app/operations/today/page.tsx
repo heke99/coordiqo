@@ -92,7 +92,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
     <AppShell
       auth={auth}
       title="Daglig operationsvy"
-      subtitle={`Batch 8H: kontrollpanel för ${preset.shortLabel.toLowerCase()} med ${getIndustryTaskFocus(auth.membership.industryType)}.`}
+      subtitle={`Kontrollpanel för ${preset.shortLabel.toLowerCase()} med ${getIndustryTaskFocus(auth.membership.industryType)}.`}
       actions={<div className="flex gap-2"><Link href="/planning/assistant" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">AI-planera</Link><Link href="/resources" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Resurser</Link></div>}
     >
       <div className="mb-5 rounded-3xl border border-slate-200 bg-white p-4">

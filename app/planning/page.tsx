@@ -24,7 +24,7 @@ export default async function PlanningPage() {
     <AppShell
       auth={auth}
       title="Planering"
-      subtitle="Batch 8A–8E: AI-assistent, planeringskörningar, återanvändbara mallar, projektkoppling, kandidater och konflikter."
+      subtitle="Planeringskörningar, AI-assistent, mallar, projektkoppling, kandidater och konflikter."
       actions={<div className="flex gap-2"><Link href="/planning/assistant" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">AI-assistent</Link><Link href="/planning/templates" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Mallar</Link><Link href="/planning/runs/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Ny planeringskörning</Link></div>}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
@@ -52,7 +52,7 @@ export default async function PlanningPage() {
                     <StatusBadge status={draft.status} />
                   </div>
                 </Link>
-              )) : <EmptyState eyebrow="Batch 8A" title="Inga planeringsutkast ännu" description="Skapa första planeringskörningen för att generera kandidater och konflikter." action={<Link href="/planning/runs/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa körning</Link>} />}
+              )) : <EmptyState eyebrow="Planering" title="Inga planeringsutkast ännu" description="Skapa första planeringskörningen för att generera kandidater och konflikter." action={<Link href="/planning/runs/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa körning</Link>} />}
             </div>
           </section>
 

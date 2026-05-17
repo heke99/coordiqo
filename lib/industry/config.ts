@@ -233,6 +233,53 @@ export const INDUSTRY_PRESETS: Record<IndustryCode, IndustryPreset> = {
   },
 }
 
+
+export const COMPANY_CORE_MODULES = [
+  'foundation',
+  'industry_engine',
+  'industry_runtime',
+  'entities',
+  'tasks',
+  'planning',
+  'planning_core',
+  'ai_planning_assistant',
+  'planning_templates',
+  'project_planning',
+  'resources',
+  'resource_responsibility',
+  'operations',
+  'routes',
+  'mobile_staff',
+  'availability_engine',
+  'rules_engine',
+  'audit_control',
+  'document_storage',
+] as const
+
+export const OPERATIONAL_MODEL_HELP: Record<OperationalModelCode, string> = {
+  route_based: 'För bolag där arbetsdagen körs som rutter mellan flera stopp.',
+  area_based: 'För bolag som planerar efter område, distrikt eller kommunal enhet.',
+  object_based: 'För bolag där objekt, kunder, patienter, fastigheter eller platser är huvudingången.',
+  case_based: 'För ärenden, serviceorder och uppdrag som styrs av status och prioritet.',
+  calendar_based: 'För pass, schema och bemanning där kalendern är viktigast.',
+  patrol_based: 'För rond, patrull, bevakning och återkommande kontrollpunkter.',
+  team_based: 'För verksamheter där teamkapacitet och gemensamma pass styr dagen.',
+  project_based: 'För projekt, arbetsmoment, kalkyl och längre jobb med flera steg.',
+  delivery_based: 'För pickup, dropoff, leveranser och multi-stop-flöden.',
+  on_call: 'För jour, akuta uppdrag och snabb omplanering.',
+}
+
+export function uniqueOperationalModels(primary: string | null | undefined, presetModels: readonly OperationalModelCode[]) {
+  const models = new Set<OperationalModelCode>()
+  if (primary && primary in OPERATIONAL_MODEL_LABELS) models.add(primary as OperationalModelCode)
+  for (const model of presetModels) models.add(model)
+  return Array.from(models)
+}
+
+export function allCompanyCoreModules() {
+  return [...COMPANY_CORE_MODULES]
+}
+
 export const CORE_MODULES = [
   { code: 'foundation', label: 'Plattformsgrund', description: 'Auth, företag, roller, team och tenant-isolering.' },
   { code: 'industry_engine', label: 'Branschmotor', description: 'Styr språk, navigation, moduler och objektpresets per företag.' },

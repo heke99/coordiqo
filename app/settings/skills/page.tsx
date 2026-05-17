@@ -19,7 +19,7 @@ export default async function SkillsSettingsPage() {
   ])
 
   return (
-    <AppShell auth={auth} title="Kompetenser & regler" subtitle="Batch 6: styr vem som får göra vad med kompetenser, certifikat och regelkontroll.">
+    <AppShell auth={auth} title="Kompetenser & regler" subtitle="Styr vem som får göra vad med kompetenser, certifikat och regelkontroll.">
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <div className="space-y-5">
           <FormCard title="Skapa eller uppdatera kompetens" description="Koden är unik per företag. Om samma kod redan finns uppdateras kompetensen istället för att krascha.">

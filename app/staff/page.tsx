@@ -37,7 +37,7 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
   const canManage = canManageStaff(auth.membership.companyRole)
 
   return (
-    <AppShell auth={auth} title="Personal" subtitle="Operativa personalprofiler, färdsätt, team och status.">
+    <AppShell auth={auth} title="Personal" subtitle="Hantera utförare, roller, färdsätt, team och status som planeringsmotorn använder.">
       <div className="space-y-5">
         <SearchFilter action="/staff" defaultValue={q} placeholder="Sök namn, e-post, anställnings-ID eller titel" newHref={canManage ? '/staff/new' : undefined} newLabel="Skapa personal">
           <select name="status" defaultValue={status} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900">
@@ -51,7 +51,7 @@ export default async function StaffPage({ searchParams }: StaffPageProps) {
 
         {!staff?.length ? (
           <EmptyState
-            eyebrow="Batch 3"
+            eyebrow="Personal"
             title="Lägg in första personalprofilen"
             description="Personalprofiler är inte samma sak som inloggningskonton. Här bygger vi den operativa bilden av vem som kan utföra arbete, vilket team personen tillhör och hur personen tar sig mellan uppdrag."
             action={canManage ? <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white" href="/staff/new">Skapa personal</Link> : undefined}

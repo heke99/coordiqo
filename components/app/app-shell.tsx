@@ -4,37 +4,33 @@ import { switchActiveCompanyAction } from '@/lib/platform/actions'
 import type { AuthContext } from '@/lib/auth/session'
 
 const primaryNav = [
-  { href: '/dashboard', label: 'Översikt', description: 'Dagens läge' },
-  { href: '/teams', label: 'Team', description: 'Grupper och ansvar' },
-  { href: '/staff', label: 'Personal', description: 'Profiler och roller' },
-  { href: '/resources', label: 'Resurser', description: 'Fordon, utrustning och nycklar' },
+  { href: '/dashboard', label: 'Översikt', description: 'Snabb väg in' },
   { href: '/operations/today', label: 'Operations', description: 'Dagens kontrollpanel' },
-  { href: '/entities', label: 'Objekt', description: 'Branschstyrda objekt' },
-  { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och arbetsorder' },
-  { href: '/projects', label: 'Projekt', description: 'Kalkyl, intake och projektuppdrag' },
-  { href: '/projects/templates', label: 'Projektmallar', description: 'Intake, regler och kalkylpresets' },
-  { href: '/planning', label: 'Planering', description: 'Motor, utkast och konflikter' },
-  { href: '/planning/assistant', label: 'AI-planerare', description: 'Text till planeringsutkast' },
-  { href: '/planning/templates', label: 'Planeringsmallar', description: 'Återanvändbara planeringsutkast' },
-  { href: '/schedule', label: 'Schema', description: 'Pass, kapacitet och låsningar' },
-  { href: '/absences', label: 'Frånvaro', description: 'Sjukdom, semester och blockeringar' },
-  { href: '/availability', label: 'Tillgänglighet', description: 'Block, konflikter och planeringsunderlag' },
-  { href: '/availability/templates', label: 'Tillgänglighetsmallar', description: 'Personal- och teammallar' },
-  { href: '/availability/presets', label: 'Passpresets', description: 'Snabbpass och bulk-schema' },
-  { href: '/settings/skills', label: 'Kompetenser', description: 'Certifikat och regelmotor' },
-  { href: '/work-orders', label: 'Arbetsorder', description: 'Samlad arbetsorderstyrning' },
-  { href: '/property', label: 'Fastighet', description: 'Hyresvärd, objekt och felanmälan' },
+  { href: '/planning', label: 'Planering', description: 'Utkast och konflikter' },
+  { href: '/planning/assistant', label: 'AI-planerare', description: 'Text till plan' },
+  { href: '/schedule', label: 'Schema', description: 'Pass och kapacitet' },
+  { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och jobb' },
+  { href: '/entities', label: 'Objekt', description: 'Kunder, platser, patienter' },
+  { href: '/resources', label: 'Resurser', description: 'Nycklar, fordon, verktyg' },
+  { href: '/staff', label: 'Personal', description: 'Utförare och kompetens' },
+  { href: '/teams', label: 'Team', description: 'Områden och grupper' },
+  { href: '/projects', label: 'Projekt', description: 'Projekt och arbetsmoment' },
+]
+
+const secondaryNav = [
+  { href: '/planning/templates', label: 'Planeringsmallar' },
+  { href: '/projects/templates', label: 'Projektmallar' },
+  { href: '/availability', label: 'Tillgänglighet' },
+  { href: '/availability/templates', label: 'Tillgänglighetsmallar' },
+  { href: '/availability/presets', label: 'Passpresets' },
+  { href: '/work-orders', label: 'Arbetsorder' },
+  { href: '/property', label: 'Fastighet' },
 ]
 
 const settingsNav = [
-  { href: '/settings/companies', label: 'Företag & miljöer' },
-  { href: '/settings/industry', label: 'Branschmotor' },
-  { href: '/settings/entity-types', label: 'Objekttyper' },
-  { href: '/settings/invitations', label: 'Inbjudningar' },
-  { href: '/settings/permissions', label: 'Behörigheter' },
-  { href: '/settings/audit', label: 'Auditlogg' },
-  { href: '/settings/support', label: 'Supportläge' },
   { href: '/settings', label: 'Inställningar' },
+  { href: '/settings/industry', label: 'Branschmotor' },
+  { href: '/settings/skills', label: 'Kompetenser' },
 ]
 
 type AppShellProps = {
@@ -108,7 +104,18 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
           </nav>
 
           <div className="mt-6 border-t border-slate-200 pt-4">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Plattform</p>
+            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Mer</p>
+            <nav className="mt-2 space-y-1 pb-4">
+              {secondaryNav.map((item) => (
+                <Link key={item.href} href={item.href} className="block rounded-2xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Inställningar</p>
             <nav className="mt-2 space-y-1 pb-4">
               {settingsNav.map((item) => (
                 <Link key={item.href} href={item.href} className="block rounded-2xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
@@ -123,7 +130,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-950">Status</p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Foundation, organisation, objekt, uppdrag och audit-spår är aktiva.
+              Bransch, objekt, uppdrag, resurser, planering och operationsvy är aktiva.
             </p>
             <form action="/api/logout" method="post" className="mt-4">
               <button className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
@@ -152,7 +159,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
 
         <div className="border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
           <nav className="flex gap-2 overflow-x-auto pb-1 coordiqo-scrollbar">
-            {[...primaryNav, ...settingsNav].map((item) => (
+            {[...primaryNav, ...secondaryNav, ...settingsNav].map((item) => (
               <Link key={item.href} href={item.href} className="shrink-0 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
                 {item.label}
               </Link>

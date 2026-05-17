@@ -43,7 +43,7 @@ export default async function EntitiesPage({ searchParams }: EntitiesPageProps) 
   const canManage = canManageEntities(auth.membership.companyRole)
 
   return (
-    <AppShell auth={auth} title="Objekt" subtitle="Branschstyrda men flexibla objekt: fastigheter, hyresgäster, vårdtagare, kunder, zoner eller projekt.">
+    <AppShell auth={auth} title="Objekt" subtitle="Skapa och hantera de objekt som uppdrag och planering byggs runt: kunder, patienter, platser, fastigheter, zoner eller mottagare.">
       <div className="space-y-5">
         <SearchFilter action="/entities" defaultValue={q} placeholder="Sök objekt, ID eller sammanfattning" newHref={canManage ? '/entities/new' : undefined} newLabel="Skapa objekt">
           <select name="type" defaultValue={type} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900">
@@ -58,7 +58,7 @@ export default async function EntitiesPage({ searchParams }: EntitiesPageProps) 
 
         {!entities?.length ? (
           <EmptyState
-            eyebrow="Batch 4"
+            eyebrow="Objekt"
             title="Skapa första objektet"
             description="Objektmodellen låser inte företaget. Vilka objekt som visas styrs av branschpresets och kan senare anpassas per företag."
             action={canManage ? <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white" href="/entities/new">Skapa objekt</Link> : undefined}

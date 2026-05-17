@@ -21,7 +21,7 @@ export default async function NewTaskPage() {
 
   return (
     <AppShell auth={auth} title="Nytt uppdrag" subtitle="Skapa ett uppdrag med objekt, tidsfönster, team/person och instruktioner.">
-      <FormCard title="Uppdragsuppgifter" description="Batch 5 lägger grunden för oschemalagt vs tilldelat arbete. Planeringsmotor kommer senare ovanpå detta.">
+      <FormCard title="Uppdragsuppgifter" description="Skapa ett uppdrag som kan kopplas till objekt, team, personal, resurser och planeringsmotorn.">
         <TaskForm action={createTaskAction} taskTypes={taskTypes ?? []} entities={entities ?? []} teams={teams ?? []} staff={staff ?? []} workOrders={workOrders ?? []} submitLabel="Skapa uppdrag" industryType={auth.membership.industryType} />
       </FormCard>
     </AppShell>

@@ -145,7 +145,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         <aside className="space-y-5">
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Skicka till planeringsmotor</h2>
-            <p className="mt-1 text-sm text-slate-500">Skapar ett vanligt Batch 8-utkast, filtrerat på projektets oschemalagda uppdrag.</p>
+            <p className="mt-1 text-sm text-slate-500">Skapar ett planeringsutkast filtrerat på projektets oschemalagda uppdrag.</p>
             <form action={createPlanningRunAction} className="mt-4 grid gap-4">
               <input type="hidden" name="project_id" value={project.id} />
               <input type="hidden" name="unscheduled_only" value="true" />

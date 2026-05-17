@@ -27,7 +27,7 @@ export default async function PlanningAssistantPage() {
     <AppShell
       auth={auth}
       title="AI-planeringsassistent"
-      subtitle="Batch 8E: skapa planeringsutkast från vanlig text, med strukturerade regler, filter och konfliktkontroll."
+      subtitle="Skapa planeringsutkast från vanlig text, med strukturerade regler, filter och konfliktkontroll."
       actions={<Link href="/planning" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link>}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
@@ -69,7 +69,7 @@ export default async function PlanningAssistantPage() {
 
         <aside className="space-y-5">
           <section className="coordiqo-card p-5">
-            <h2 className="text-lg font-semibold text-slate-950">Så tolkar Batch 8E texten</h2>
+            <h2 className="text-lg font-semibold text-slate-950">Så tolkar AI-planeraren texten</h2>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
               <p><b className="text-slate-950">LLM-lagret</b> ska vara assistans ovanpå databasregler och motor, inte ensam källa till tider/kostnad.</p>
               <p><b className="text-slate-950">Planen</b> skapas som draft med kandidater, score och konflikter innan publicering.</p>

@@ -13,7 +13,7 @@ import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '
 import { publishPlanningDraft } from '@/lib/planning/publish-draft'
 import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
-import { getIndustryPreset } from '@/lib/industry/config'
+import { allCompanyCoreModules, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function value(formData: FormData, key: string) {
@@ -518,11 +518,14 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
 
   await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: auth.membership!.companyId }).throwOnError()
 
+  const activeModules = allCompanyCoreModules()
+  const enabledOperationalModels = uniqueOperationalModels(operationalModel, preset.operationalModels)
+
   await Promise.all([
     supabaseAdmin.from('company_settings').upsert({
       company_id: auth.membership!.companyId,
       ui_label_set: industryType,
-      active_modules: ['foundation', 'industry_engine', 'resources', 'entities', 'tasks', 'planning', 'operations', 'routes', 'mobile_staff'],
+      active_modules: activeModules,
     }, { onConflict: 'company_id' }),
     supabaseAdmin.from('industry_runtime_configs').upsert({
       company_id: auth.membership!.companyId,
@@ -532,6 +535,12 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
       task_statuses: preset.statuses,
       mobile_actions: preset.mobileActions,
       planning_rules: preset.planningRules,
+      settings: {
+        primaryOperationalModel: operationalModel,
+        enabledOperationalModels,
+        allCoreModulesEnabled: true,
+        note: 'Operational model is the primary planning lens, not a hard lock.',
+      },
       updated_by: auth.userId,
     }, { onConflict: 'company_id' }),
   ])
@@ -560,6 +569,7 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
 
   await audit(auth.membership!.companyId, auth.userId, 'update', 'industry_runtime_config', auth.membership!.companyId, { industryType, operationalModel })
   revalidatePath('/settings/industry')
+  revalidatePath('/settings')
   revalidatePath('/dashboard')
 }
 
@@ -649,18 +659,19 @@ export async function createResourceTypeAction(formData: FormData) {
 
   const { data, error } = await supabaseAdmin
     .from('resource_types')
-    .insert({
+    .upsert({
       company_id: auth.membership!.companyId,
       name,
       code,
       description: value(formData, 'description'),
       is_active: true,
-    })
+      archived_at: null,
+    }, { onConflict: 'company_id,code' })
     .select('id')
     .single()
 
   if (error) throw new Error(error.message)
-  await audit(auth.membership!.companyId, auth.userId, 'create', 'resource_type', data.id, { name, code })
+  await audit(auth.membership!.companyId, auth.userId, 'upsert', 'resource_type', data.id, { name, code })
   revalidatePath('/resources')
   revalidatePath('/resources/new')
 }
@@ -3178,11 +3189,32 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
     .single()
   if (error) throw new Error(error.message)
 
+  const preset = getIndustryPreset(industryType)
+  const activeModules = allCompanyCoreModules()
+  const enabledOperationalModels = uniqueOperationalModels(operationalModel, preset.operationalModels)
+
   await supabaseAdmin.from('company_settings').insert({
     company_id: company.id,
-    active_modules: ['foundation', 'industry_engine', 'resources', 'entities', 'tasks', 'audit_control', 'document_storage'],
+    active_modules: activeModules,
     ui_label_set: industryType,
   })
+
+  await supabaseAdmin.from('industry_runtime_configs').upsert({
+    company_id: company.id,
+    industry_code: industryType,
+    operational_model: operationalModel,
+    terminology: preset.terminology,
+    task_statuses: preset.statuses,
+    mobile_actions: preset.mobileActions,
+    planning_rules: preset.planningRules,
+    settings: {
+      primaryOperationalModel: operationalModel,
+      enabledOperationalModels,
+      allCoreModulesEnabled: true,
+      source: 'workspace_action',
+    },
+    updated_by: auth.userId,
+  }, { onConflict: 'company_id' })
 
   await supabaseAdmin.from('company_memberships').update({ is_default: false }).eq('user_id', auth.userId)
   const { data: membership, error: membershipError } = await supabaseAdmin
