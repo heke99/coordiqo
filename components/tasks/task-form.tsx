@@ -51,6 +51,24 @@ function taskCopy(industryType?: string | null) {
         description: 'Uppdragsbeskrivning',
         durationHint: 'Städ kan anges i timmar för större objekt eller minuter för korta stopp.',
       }
+    case 'municipality':
+      return {
+        title: 'Kommunuppdrag',
+        titlePlaceholder: 'Ex. Måltidsleverans, intern transport, fastighetsservice',
+        entityLabel: 'Mottagare/objekt/enhet',
+        instructions: 'Instruktioner, access, kontaktväg och kommunal enhet',
+        description: 'Uppdragsbeskrivning',
+        durationHint: 'Kommunala uppdrag styrs ofta av område, enhet, tidsfönster och resurser.',
+      }
+    case 'courier':
+      return {
+        title: 'Leverans',
+        titlePlaceholder: 'Ex. Pickup + dropoff, expressleverans, retur',
+        entityLabel: 'Kund/mottagare',
+        instructions: 'Leveransinstruktioner, portkod, kontakt och mottagarkrav',
+        description: 'Leveransbeskrivning',
+        durationHint: 'Bud/kurir använder pickup, dropoff, tidsfönster, fordon och kapacitet.',
+      }
     case 'field_service':
       return {
         title: 'Serviceuppdrag',
@@ -119,6 +137,34 @@ export function TaskForm({ action, task, taskTypes, entities, teams, staff, work
       <div className="grid gap-4 md:grid-cols-2"><Field label="Tidsfönster start"><input name="time_window_start" type="datetime-local" defaultValue={datetimeLocal(task?.time_window_start)} className={inputClassName} /></Field><Field label="Tidsfönster slut"><input name="time_window_end" type="datetime-local" defaultValue={datetimeLocal(task?.time_window_end)} className={inputClassName} /></Field></div>
       <div className="grid gap-4 md:grid-cols-2"><Field label="Schemalagd start"><input name="scheduled_start" type="datetime-local" defaultValue={datetimeLocal(task?.scheduled_start)} className={inputClassName} /></Field><Field label="Schemalagd slut"><input name="scheduled_end" type="datetime-local" defaultValue={datetimeLocal(task?.scheduled_end)} className={inputClassName} /></Field></div>
       <div className="grid gap-4 md:grid-cols-2"><Field label="SLA / senast klar"><input name="sla_due_at" type="datetime-local" defaultValue={datetimeLocal(task?.sla_due_at)} className={inputClassName} /></Field><Field label="Återkommande regel" hint="Förberett för senare scheduler, ex. FREQ=WEEKLY;BYDAY=MO."><input name="recurrence_rule" defaultValue={task?.recurrence_rule ?? ''} className={inputClassName} placeholder="RRULE senare" /></Field></div>
+
+      {industryType === 'courier' ? (
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-950">Bud/Kurir-fält</p>
+          <p className="mt-1 text-xs text-slate-500">Sparas i uppdragets metadata och används i operationsvyn/ruttmotorn.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <Field label="Pickup-adress"><input name="cf_pickup_address" defaultValue={task?.custom_fields?.pickup_address ?? ''} className={inputClassName} placeholder="Lager, butik eller avsändare" /></Field>
+            <Field label="Dropoff-adress"><input name="cf_dropoff_address" defaultValue={task?.custom_fields?.dropoff_address ?? ''} className={inputClassName} placeholder="Mottagare / leveransadress" /></Field>
+            <Field label="Paket/antal"><input name="cf_package_count" type="number" min="0" defaultValue={task?.custom_fields?.package_count ?? ''} className={inputClassName} /></Field>
+            <Field label="Vikt kg"><input name="cf_weight_kg" type="number" min="0" step="0.1" defaultValue={task?.custom_fields?.weight_kg ?? ''} className={inputClassName} /></Field>
+            <Field label="Fordonstyp"><input name="cf_vehicle_type" defaultValue={task?.custom_fields?.vehicle_type ?? ''} className={inputClassName} placeholder="Bil, cykel, kylbil, lastbil" /></Field>
+            <Field label="Leveransreferens"><input name="cf_delivery_reference" defaultValue={task?.custom_fields?.delivery_reference ?? ''} className={inputClassName} /></Field>
+          </div>
+        </div>
+      ) : null}
+
+      {industryType === 'municipality' ? (
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-950">Kommun-fält</p>
+          <p className="mt-1 text-xs text-slate-500">Sparas i uppdragets metadata och används i operationsvyn/områdesplanering.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <Field label="Enhet/förvaltning"><input name="cf_municipal_unit" defaultValue={task?.custom_fields?.municipal_unit ?? ''} className={inputClassName} placeholder="Ex. LSS, Park, Måltid, Fastighet" /></Field>
+            <Field label="Område/distrikt"><input name="cf_area_label" defaultValue={task?.custom_fields?.area_label ?? ''} className={inputClassName} placeholder="Ex. Nord, Centrum, Område A" /></Field>
+            <Field label="Servicekategori"><input name="cf_service_category" defaultValue={task?.custom_fields?.service_category ?? ''} className={inputClassName} placeholder="Måltidsleverans, intern service, tillsyn" /></Field>
+            <Field label="Kräver två personal"><select name="cf_requires_two_staff" defaultValue={task?.custom_fields?.requires_two_staff ?? ''} className={selectClassName}><option value="">Ej valt</option><option value="true">Ja</option><option value="false">Nej</option></select></Field>
+          </div>
+        </div>
+      ) : null}
 
       <Field label={copy.description}><textarea name="description" defaultValue={task?.description ?? ''} className={textareaClassName} /></Field>
       <Field label={copy.instructions}><textarea name="instructions" defaultValue={task?.instructions ?? ''} className={textareaClassName} /></Field>

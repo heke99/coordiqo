@@ -8,6 +8,7 @@ const primaryNav = [
   { href: '/teams', label: 'Team', description: 'Grupper och ansvar' },
   { href: '/staff', label: 'Personal', description: 'Profiler och roller' },
   { href: '/resources', label: 'Resurser', description: 'Fordon, utrustning och nycklar' },
+  { href: '/operations/today', label: 'Operations', description: 'Dagens kontrollpanel' },
   { href: '/entities', label: 'Objekt', description: 'Branschstyrda objekt' },
   { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och arbetsorder' },
   { href: '/projects', label: 'Projekt', description: 'Kalkyl, intake och projektuppdrag' },

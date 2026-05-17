@@ -13,6 +13,7 @@ import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '
 import { publishPlanningDraft } from '@/lib/planning/publish-draft'
 import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
+import { getIndustryPreset } from '@/lib/industry/config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function value(formData: FormData, key: string) {
@@ -495,6 +496,71 @@ export async function archiveStaffAction(formData: FormData) {
   await audit(auth.membership!.companyId, auth.userId, 'archive', 'staff_profile', id)
   revalidatePath('/staff')
   redirect('/staff')
+}
+
+
+export async function updateCompanyIndustrySettingsAction(formData: FormData) {
+  const auth = await requireMembership('company_admin', 'att uppdatera branschinställningar')
+  const industryType = value(formData, 'industry_type') ?? 'other'
+  const operationalModel = value(formData, 'operational_model') ?? 'route_based'
+  const preset = getIndustryPreset(industryType)
+
+  const { error: companyError } = await supabaseAdmin
+    .from('companies')
+    .update({
+      industry_type: industryType,
+      operational_model: operationalModel,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', auth.membership!.companyId)
+
+  if (companyError) throw new Error(companyError.message)
+
+  await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: auth.membership!.companyId }).throwOnError()
+
+  await Promise.all([
+    supabaseAdmin.from('company_settings').upsert({
+      company_id: auth.membership!.companyId,
+      ui_label_set: industryType,
+      active_modules: ['foundation', 'industry_engine', 'resources', 'entities', 'tasks', 'planning', 'operations', 'routes', 'mobile_staff'],
+    }, { onConflict: 'company_id' }),
+    supabaseAdmin.from('industry_runtime_configs').upsert({
+      company_id: auth.membership!.companyId,
+      industry_code: industryType,
+      operational_model: operationalModel,
+      terminology: preset.terminology,
+      task_statuses: preset.statuses,
+      mobile_actions: preset.mobileActions,
+      planning_rules: preset.planningRules,
+      updated_by: auth.userId,
+    }, { onConflict: 'company_id' }),
+  ])
+
+  for (const taskName of preset.taskTypes) {
+    const code = normalizeCode(taskName) ?? taskName.toLowerCase()
+    await supabaseAdmin.from('task_types').upsert({
+      company_id: auth.membership!.companyId,
+      code,
+      name: taskName,
+      description: `${preset.label}: ${taskName}`,
+      is_active: true,
+    }, { onConflict: 'company_id,code' })
+  }
+
+  for (const resourceName of preset.resourceTypes) {
+    const code = normalizeCode(resourceName) ?? resourceName.toLowerCase()
+    await supabaseAdmin.from('resource_types').upsert({
+      company_id: auth.membership!.companyId,
+      code,
+      name: resourceName,
+      description: `${preset.label}: ${resourceName}`,
+      is_active: true,
+    }, { onConflict: 'company_id,code' })
+  }
+
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'industry_runtime_config', auth.membership!.companyId, { industryType, operationalModel })
+  revalidatePath('/settings/industry')
+  revalidatePath('/dashboard')
 }
 
 export async function createResourceAction(formData: FormData) {
@@ -1365,6 +1431,7 @@ export async function createTaskAction(formData: FormData) {
       estimated_duration_minutes: durationMinutesFromForm(formData),
       sla_due_at: value(formData, 'sla_due_at'),
       recurrence_rule: value(formData, 'recurrence_rule'),
+      custom_fields: customFieldsFromForm(formData),
       created_by: auth.userId,
       updated_by: auth.userId,
     })
@@ -1412,6 +1479,7 @@ export async function updateTaskAction(formData: FormData) {
       estimated_duration_minutes: durationMinutesFromForm(formData),
       sla_due_at: value(formData, 'sla_due_at'),
       recurrence_rule: value(formData, 'recurrence_rule'),
+      custom_fields: customFieldsFromForm(formData),
       updated_by: auth.userId,
     })
     .eq('id', id)
