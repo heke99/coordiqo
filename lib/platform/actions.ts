@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-import { assertCompanyPermission } from '@/lib/auth/permissions'
+import { assertCompanyPermission, assertPlatformAdminRole, COMPANY_ROLE_LABELS, PERMISSION_MATRIX, type CompanyRole } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
 import { conflictLevel } from '@/lib/planning/conflict-detection'
@@ -41,6 +41,27 @@ function formDataSnapshot(formData: FormData) {
     else snapshot[key] = raw
   }
   return snapshot
+}
+
+type BulkShiftFormActionState = {
+  ok: boolean
+  message: string
+  fieldErrors: Record<string, string>
+  values: Record<string, string | string[]>
+  preview?: {
+    total: number
+    warnings: number
+    blocking: number
+    valid: number
+    targetCount: number
+    targetStaffCount: number
+    teamCount: number
+    dateCount: number
+    title: string
+    capacityPerShift: number
+    totalCapacity: number
+    examples: Array<{ date: string; target: string; conflict: string | null }>
+  }
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -256,7 +277,13 @@ async function requireMembership(minimumRole: Parameters<typeof assertCompanyPer
   return auth
 }
 
-async function audit(companyId: string, actorUserId: string, action: string, entityType: string, entityId: string | null, metadata: Record<string, unknown> = {}) {
+async function requirePlatformAdmin(label: string) {
+  const auth = await requireAuth()
+  assertPlatformAdminRole(auth.platformRole, label)
+  return auth
+}
+
+async function audit(companyId: string | null, actorUserId: string, action: string, entityType: string, entityId: string | null, metadata: Record<string, unknown> = {}) {
   await supabaseAdmin.from('audit_logs').insert({
     company_id: companyId,
     actor_user_id: actorUserId,
@@ -4380,8 +4407,19 @@ export async function bulkCreateShiftsAction(formData: FormData) {
   await bulkCreateShiftsCore(formData)
 }
 
-export async function bulkCreateShiftsFormAction(_previousState: unknown, formData: FormData) {
+export async function bulkCreateShiftsFormAction(_previousState: BulkShiftFormActionState, formData: FormData): Promise<BulkShiftFormActionState> {
   try {
+    if (value(formData, 'action_intent') === 'preview') {
+      const preview = await previewBulkShiftsCore(formData)
+      return {
+        ok: true,
+        message: 'Förhandsgranskning klar. Kontrollera konflikter och tryck sedan skapa pass.',
+        fieldErrors: {},
+        values: formDataSnapshot(formData),
+        preview,
+      }
+    }
+
     await bulkCreateShiftsCore(formData)
     return {
       ok: true,
@@ -4446,7 +4484,19 @@ export async function bulkUpdateShiftsAction(formData: FormData) {
   const status = value(formData, 'status')
   if (status) update.status = status
   const teamId = value(formData, 'team_id')
-  if (teamId) update.team_id = teamId
+  if (teamId === '__clear__') update.team_id = null
+  else if (teamId) update.team_id = teamId
+  const staffProfileId = value(formData, 'staff_profile_id')
+  if (staffProfileId === '__clear__') update.staff_profile_id = null
+  else if (staffProfileId) update.staff_profile_id = staffProfileId
+  const transportMode = value(formData, 'transport_mode')
+  if (transportMode) update.transport_mode = transportMode
+  const breakMinutes = value(formData, 'break_minutes')
+  if (breakMinutes) update.break_minutes = Number(breakMinutes)
+  const bufferMinutes = value(formData, 'buffer_minutes')
+  if (bufferMinutes) update.buffer_minutes = Number(bufferMinutes)
+  const roleLabel = value(formData, 'role_label')
+  if (roleLabel) update.role_label = roleLabel
   const planningLocked = value(formData, 'planning_locked')
   if (planningLocked) {
     update.planning_locked = planningLocked === 'true'
@@ -4457,9 +4507,457 @@ export async function bulkUpdateShiftsAction(formData: FormData) {
     update.archived_at = new Date().toISOString()
     update.status = 'archived'
   }
-  const { error } = await supabaseAdmin.from('shifts').update(update).eq('company_id', auth.membership!.companyId).in('id', shiftIds)
-  if (error) throw new Error(error.message)
+
+  const dateShift = value(formData, 'move_date_to')
+  const startTime = value(formData, 'start_time')
+  const endTime = value(formData, 'end_time')
+  if (dateShift || startTime || endTime || breakMinutes || bufferMinutes) {
+    const { data: currentShifts, error: loadError } = await supabaseAdmin.from('shifts').select('id, shift_date, starts_at, ends_at, break_minutes, buffer_minutes, planned_minutes').eq('company_id', auth.membership!.companyId).in('id', shiftIds)
+    if (loadError) throw new Error(loadError.message)
+    for (const shift of (currentShifts ?? []) as any[]) {
+      const targetDate = dateShift ?? shift.shift_date
+      const sourceStart = new Date(shift.starts_at)
+      const sourceEnd = new Date(shift.ends_at)
+      const nextStartTime = startTime ?? sourceStart.toISOString().slice(11, 16)
+      const nextEndTime = endTime ?? sourceEnd.toISOString().slice(11, 16)
+      const range = combineShiftDateTimeRange(targetDate, nextStartTime, nextEndTime)
+      if (!range) continue
+      const nextBreak = breakMinutes ? Number(breakMinutes) : Number(shift.break_minutes ?? 0)
+      const nextBuffer = bufferMinutes ? Number(bufferMinutes) : Number(shift.buffer_minutes ?? 0)
+      const cap = computeCapacity(range.startsAt, range.endsAt, nextBreak, nextBuffer)
+      await supabaseAdmin.from('shifts').update({
+        ...update,
+        shift_date: targetDate,
+        starts_at: range.startsAt,
+        ends_at: range.endsAt,
+        total_minutes: cap.total,
+        break_minutes: nextBreak,
+        buffer_minutes: nextBuffer,
+        capacity_minutes: cap.capacity,
+        remaining_minutes: Math.max(0, cap.capacity - Number(shift.planned_minutes ?? 0)),
+      }).eq('id', shift.id).eq('company_id', auth.membership!.companyId)
+    }
+  } else {
+    const { error } = await supabaseAdmin.from('shifts').update(update).eq('company_id', auth.membership!.companyId).in('id', shiftIds)
+    if (error) throw new Error(error.message)
+  }
   await audit(auth.membership!.companyId, auth.userId, 'bulk_update', 'shifts', null, { count: shiftIds.length, update })
   await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, null, null)
   revalidatePath('/schedule')
+}
+
+async function buildBulkShiftTargets(params: {
+  companyId: string
+  selectedStaffIds: string[]
+  selectedTeamIds: string[]
+  includeTeamMembers: boolean
+  presetDefaultTeamId?: string | null
+}) {
+  const staffIds = new Set(params.selectedStaffIds)
+  const staffTeamById = new Map<string, string | null>()
+
+  if (params.selectedStaffIds.length) {
+    const { data: selectedStaff } = await supabaseAdmin
+      .from('staff_profiles')
+      .select('id, primary_team_id')
+      .eq('company_id', params.companyId)
+      .is('archived_at', null)
+      .in('id', params.selectedStaffIds)
+    for (const member of (selectedStaff ?? []) as Array<{ id: string; primary_team_id: string | null }>) {
+      staffTeamById.set(member.id, member.primary_team_id ?? null)
+    }
+  }
+
+  if (params.includeTeamMembers && params.selectedTeamIds.length) {
+    const { data: memberships } = await supabaseAdmin
+      .from('staff_profiles')
+      .select('id, primary_team_id')
+      .eq('company_id', params.companyId)
+      .eq('status', 'active')
+      .is('archived_at', null)
+      .in('primary_team_id', params.selectedTeamIds)
+    for (const member of (memberships ?? []) as Array<{ id: string; primary_team_id: string | null }>) {
+      staffIds.add(member.id)
+      staffTeamById.set(member.id, member.primary_team_id ?? null)
+    }
+  }
+
+  const targets: Array<{ staffProfileId: string | null; teamId: string | null }> = []
+  for (const staffId of staffIds) {
+    const staffTeamId = staffTeamById.get(staffId) ?? null
+    const teamId = staffTeamId && params.selectedTeamIds.includes(staffTeamId) ? staffTeamId : params.selectedTeamIds[0] ?? params.presetDefaultTeamId ?? null
+    targets.push({ staffProfileId: staffId, teamId })
+  }
+  if (!targets.length && params.selectedTeamIds.length) {
+    for (const teamId of params.selectedTeamIds) targets.push({ staffProfileId: null, teamId })
+  }
+
+  return { targets, targetStaffIds: [...staffIds] }
+}
+
+async function previewBulkShiftsCore(formData: FormData) {
+  const auth = await requireMembership('planner', 'att förhandsgranska bulkpass')
+  const companyId = auth.membership!.companyId
+  const presetId = value(formData, 'preset_id')
+  const fromDate = value(formData, 'date_from') ?? value(formData, 'shift_date')
+  const toDate = value(formData, 'date_to') ?? fromDate
+  if (!fromDate || !toDate) {
+    throw new FormActionValidationError('Datumintervall krävs.', {
+      date_from: !fromDate ? 'Välj från datum.' : undefined,
+      date_to: !toDate ? 'Välj till datum.' : undefined,
+    })
+  }
+
+  const preset = await loadShiftPresetForCompany(companyId, presetId, auth.membership?.industryType ?? null)
+  const title = preset?.name ?? value(formData, 'custom_name') ?? 'Eget pass'
+  const startTime = preset?.start_time ? String(preset.start_time).slice(0, 5) : value(formData, 'start_time')
+  const endTime = preset?.end_time ? String(preset.end_time).slice(0, 5) : value(formData, 'end_time')
+  if (!startTime || !endTime) {
+    throw new FormActionValidationError('Start- och sluttid krävs.', {
+      start_time: !startTime ? 'Ange starttid.' : undefined,
+      end_time: !endTime ? 'Ange sluttid.' : undefined,
+    })
+  }
+
+  const selectedStaffIds = formValues(formData, 'staff_profile_ids')
+  const selectedTeamIds = formValues(formData, 'team_ids')
+  const includeTeamMembers = value(formData, 'include_team_members') === 'true'
+  const weekdays = weekdaysFromForm(formData)
+  const { targets, targetStaffIds } = await buildBulkShiftTargets({ companyId, selectedStaffIds, selectedTeamIds, includeTeamMembers, presetDefaultTeamId: preset?.default_team_id ?? null })
+  if (!targets.length) {
+    throw new FormActionValidationError('Välj minst en personal eller ett team.', {
+      staff_profile_ids: 'Välj minst en personal eller ett team.',
+      team_ids: 'Välj minst en personal eller ett team.',
+      targets: 'Välj minst en personal eller ett team innan du förhandsgranskar.',
+    })
+  }
+
+  const breakMinutes = Number(preset?.break_minutes ?? value(formData, 'break_minutes') ?? 0)
+  const bufferMinutes = Number(preset?.buffer_minutes ?? value(formData, 'buffer_minutes') ?? 0)
+  let total = 0
+  let warnings = 0
+  let blocking = 0
+  const examples: Array<{ date: string; target: string; conflict: string | null }> = []
+
+  for (const dateString of dateRange(fromDate, toDate)) {
+    if (!weekdays.includes(weekdayNumber(dateString))) continue
+    const range = combineShiftPresetDateTime(dateString, startTime, endTime)
+    const cap = computeCapacity(range.startsAt, range.endsAt, breakMinutes, bufferMinutes)
+    if (cap.capacity <= 0) warnings += targets.length
+
+    for (const target of targets) {
+      total += 1
+      let conflict: string | null = null
+      if (target.staffProfileId) {
+        const [{ data: overlaps }, { data: absences }] = await Promise.all([
+          supabaseAdmin.from('shifts').select('id').eq('company_id', companyId).eq('staff_profile_id', target.staffProfileId).is('archived_at', null).lt('starts_at', range.endsAt).gt('ends_at', range.startsAt).limit(1),
+          supabaseAdmin.from('absences').select('id').eq('company_id', companyId).eq('staff_profile_id', target.staffProfileId).eq('affects_planning', true).is('archived_at', null).lt('starts_at', range.endsAt).gt('ends_at', range.startsAt).limit(1),
+        ])
+        const conflicts = []
+        if (overlaps?.length) conflicts.push('Överlappande pass')
+        if (absences?.length) conflicts.push('Frånvaro överlappar')
+        if (conflicts.length) {
+          blocking += 1
+          conflict = conflicts.join(', ')
+        }
+      }
+      if (examples.length < 12) examples.push({ date: dateString, target: target.staffProfileId ?? target.teamId ?? 'mål', conflict })
+    }
+  }
+
+  const capacity = (() => {
+    const firstDate = dateRange(fromDate, toDate).find((day) => weekdays.includes(weekdayNumber(day))) ?? fromDate
+    const range = combineShiftPresetDateTime(firstDate, startTime, endTime)
+    return computeCapacity(range.startsAt, range.endsAt, breakMinutes, bufferMinutes)
+  })()
+
+  return {
+    total,
+    warnings,
+    blocking,
+    valid: Math.max(0, total - blocking),
+    targetCount: targets.length,
+    targetStaffCount: targetStaffIds.length,
+    teamCount: selectedTeamIds.length,
+    dateCount: dateRange(fromDate, toDate).filter((day) => weekdays.includes(weekdayNumber(day))).length,
+    title,
+    capacityPerShift: capacity.capacity,
+    totalCapacity: capacity.capacity * Math.max(0, total - blocking),
+    examples,
+  }
+}
+
+export async function updateCompanyGovernanceAction(formData: FormData) {
+  const auth = await requirePlatformAdmin('att hantera bolag')
+  const companyId = value(formData, 'company_id')
+  const lifecycleStatus = value(formData, 'lifecycle_status') ?? 'active'
+  const note = value(formData, 'approval_note')
+  if (!companyId) throw new Error('Bolags-id saknas.')
+  if (!['pending_approval', 'active', 'paused', 'rejected', 'archived'].includes(lifecycleStatus)) throw new Error('Ogiltig bolagsstatus.')
+
+  const now = new Date().toISOString()
+  const update: Record<string, unknown> = {
+    lifecycle_status: lifecycleStatus,
+    approval_note: note,
+    status: lifecycleStatus === 'active' ? 'active' : 'inactive',
+    updated_at: now,
+  }
+  if (lifecycleStatus === 'active') {
+    update.approved_by = auth.userId
+    update.approved_at = now
+    update.paused_at = null
+    update.archived_at = null
+  }
+  if (lifecycleStatus === 'paused') {
+    update.paused_by = auth.userId
+    update.paused_at = now
+  }
+  if (lifecycleStatus === 'archived') {
+    update.archived_by = auth.userId
+    update.archived_at = now
+  }
+
+  const { error } = await supabaseAdmin.from('companies').update(update).eq('id', companyId)
+  if (error) throw new Error(error.message)
+  await audit(companyId, auth.userId, 'governance_update', 'company', companyId, { lifecycleStatus, note })
+  revalidatePath('/admin')
+  revalidatePath('/admin/companies')
+  revalidatePath(`/admin/companies/${companyId}`)
+}
+
+export async function updateCompanyMembershipAction(formData: FormData) {
+  const auth = await requirePlatformAdmin('att ändra bolagsanvändare')
+  const membershipId = value(formData, 'membership_id')
+  const companyId = value(formData, 'company_id')
+  const role = value(formData, 'role') as CompanyRole | null
+  const status = value(formData, 'status') ?? 'active'
+  if (!membershipId || !companyId || !role) throw new Error('Membership, bolag och roll krävs.')
+  if (!Object.keys(COMPANY_ROLE_LABELS).includes(role)) throw new Error('Ogiltig roll.')
+
+  const { error } = await supabaseAdmin.from('company_memberships').update({ role, status, updated_at: new Date().toISOString() }).eq('id', membershipId).eq('company_id', companyId)
+  if (error) throw new Error(error.message)
+  await audit(companyId, auth.userId, 'update', 'company_membership', membershipId, { role, status })
+  revalidatePath('/admin/companies')
+  revalidatePath(`/admin/companies/${companyId}`)
+}
+
+export async function disableCompanyMembershipAction(formData: FormData) {
+  const auth = await requirePlatformAdmin('att ta bort bolagsanvändare')
+  const membershipId = value(formData, 'membership_id')
+  const companyId = value(formData, 'company_id')
+  const reason = value(formData, 'reason') ?? 'Borttagen av superadmin'
+  if (!membershipId || !companyId) throw new Error('Membership och bolag krävs.')
+
+  const { error } = await supabaseAdmin.from('company_memberships').update({ status: 'disabled', is_default: false, disabled_by: auth.userId, disabled_at: new Date().toISOString(), disabled_reason: reason, archived_at: new Date().toISOString() }).eq('id', membershipId).eq('company_id', companyId)
+  if (error) throw new Error(error.message)
+  await audit(companyId, auth.userId, 'disable', 'company_membership', membershipId, { reason })
+  revalidatePath('/admin/companies')
+  revalidatePath(`/admin/companies/${companyId}`)
+}
+
+export async function reviewCompanyAccessRequestAction(formData: FormData) {
+  const auth = await requirePlatformAdmin('att granska bolagsansökningar')
+  const requestId = value(formData, 'request_id')
+  const decision = value(formData, 'decision')
+  const reviewNote = value(formData, 'review_note')
+  const targetCompanyIdFromForm = value(formData, 'target_company_id')
+  if (!requestId || !decision) throw new Error('Ansökan och beslut krävs.')
+  if (!['approved', 'rejected'].includes(decision)) throw new Error('Ogiltigt beslut.')
+
+  const { data: request, error: requestError } = await supabaseAdmin.from('company_access_requests').select('*').eq('id', requestId).maybeSingle()
+  if (requestError) throw new Error(requestError.message)
+  if (!request) throw new Error('Ansökan kunde inte hittas.')
+
+  let companyId = targetCompanyIdFromForm ?? request.target_company_id ?? request.created_company_id ?? null
+  let membershipId: string | null = null
+
+  if (decision === 'approved') {
+    if (!companyId) {
+      const slugBase = String(request.company_name ?? 'company').toLowerCase().trim().replace(/å/g, 'a').replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'company'
+      const slug = `${slugBase}-${Math.random().toString(36).slice(2, 7)}`
+      const { data: company, error: companyError } = await supabaseAdmin.from('companies').insert({ name: request.company_name, slug, status: 'active', lifecycle_status: 'active', industry_type: 'other', operational_model: 'case_based', approved_by: auth.userId, approved_at: new Date().toISOString() }).select('id').single()
+      if (companyError) throw new Error(companyError.message)
+      companyId = company.id
+      await supabaseAdmin.from('company_settings').insert({ company_id: companyId, active_modules: allCompanyCoreModules(), ui_label_set: 'other' })
+      await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: companyId }).throwOnError()
+    }
+
+    if (request.requester_user_id && companyId) {
+      await supabaseAdmin.from('company_memberships').update({ is_default: false }).eq('user_id', request.requester_user_id)
+      const { data: membership, error: membershipError } = await supabaseAdmin.from('company_memberships').upsert({ company_id: companyId, user_id: request.requester_user_id, role: request.requested_role ?? 'company_admin', status: 'active', is_default: true }, { onConflict: 'company_id,user_id' }).select('id').single()
+      if (membershipError) throw new Error(membershipError.message)
+      membershipId = membership.id
+    }
+  }
+
+  const { error } = await supabaseAdmin.from('company_access_requests').update({ status: decision, reviewed_by: auth.userId, reviewed_at: new Date().toISOString(), review_note: reviewNote, target_company_id: companyId, created_company_id: companyId, assigned_membership_id: membershipId }).eq('id', requestId)
+  if (error) throw new Error(error.message)
+
+  if (request.requester_user_id) {
+    await supabaseAdmin.from('notifications').insert({ company_id: companyId, recipient_user_id: request.requester_user_id, title: decision === 'approved' ? 'Bolagsansökan godkänd' : 'Bolagsansökan nekad', body: reviewNote, notification_type: 'company_access_request', severity: decision === 'approved' ? 'success' : 'warning', action_href: decision === 'approved' ? '/dashboard' : '/setup', related_entity_type: 'company_access_request', related_entity_id: requestId, created_by: auth.userId })
+  }
+  await audit(companyId ?? request.target_company_id ?? null, auth.userId, decision, 'company_access_request', requestId, { reviewNote, membershipId })
+  revalidatePath('/admin')
+  revalidatePath('/admin/access-requests')
+  revalidatePath('/admin/companies')
+}
+
+export async function resendInvitationAction(formData: FormData) {
+  const auth = await requireMembership('operations_manager', 'att skicka om inbjudan')
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Invite-id saknas.')
+  const { data: invitation, error } = await supabaseAdmin.from('company_invitations').select('id, email, full_name, role, token, status, resend_count').eq('id', id).eq('company_id', auth.membership!.companyId).maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!invitation) throw new Error('Inbjudan kunde inte hittas.')
+  if (invitation.status !== 'pending') throw new Error('Endast aktiva inbjudningar kan skickas om.')
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  const acceptUrl = `${siteUrl}/invite/accept?token=${invitation.token}`
+  const delivery = await queueAndSendEmail({
+    companyId: auth.membership!.companyId,
+    to: invitation.email,
+    subject: `Påminnelse: inbjudan till ${auth.membership!.companyName} i Coordiqo`,
+    bodyText: [`Hej${invitation.full_name ? ` ${invitation.full_name}` : ''},`, '', `Du har fortfarande en aktiv inbjudan till ${auth.membership!.companyName}.`, `Roll: ${invitation.role}`, '', `Acceptera inbjudan här: ${acceptUrl}`].join('\n'),
+    relatedEntityType: 'company_invitation',
+    relatedEntityId: invitation.id,
+    createdBy: auth.userId,
+  })
+  await supabaseAdmin.from('company_invitations').update({ resend_count: Number(invitation.resend_count ?? 0) + 1, last_resent_at: new Date().toISOString(), email_delivery_status: delivery.status === 'sent' ? 'sent' : delivery.status === 'failed' ? 'failed' : 'queued', last_email_error: delivery.status === 'failed' ? delivery.error ?? 'E-postutskick misslyckades' : null }).eq('id', id)
+  await audit(auth.membership!.companyId, auth.userId, 'resend', 'company_invitation', id, { delivery: delivery.status })
+  revalidatePath('/settings/invitations')
+}
+
+export async function markNotificationReadAction(formData: FormData) {
+  const auth = await requireAuth()
+  const id = value(formData, 'id')
+  if (!id) throw new Error('Notis-id saknas.')
+  let query = supabaseAdmin.from('notifications').update({ status: 'read', read_at: new Date().toISOString() }).eq('id', id)
+  if (auth.membership?.companyId) query = query.or(`recipient_user_id.eq.${auth.userId},company_id.eq.${auth.membership.companyId}`)
+  else query = query.eq('recipient_user_id', auth.userId)
+  const { error } = await query
+  if (error) throw new Error(error.message)
+  revalidatePath('/notifications')
+}
+
+export async function markAllNotificationsReadAction() {
+  const auth = await requireAuth()
+  let query = supabaseAdmin.from('notifications').update({ status: 'read', read_at: new Date().toISOString() }).eq('status', 'unread')
+  if (auth.membership?.companyId) query = query.or(`recipient_user_id.eq.${auth.userId},company_id.eq.${auth.membership.companyId}`)
+  else query = query.eq('recipient_user_id', auth.userId)
+  const { error } = await query
+  if (error) throw new Error(error.message)
+  revalidatePath('/notifications')
+}
+
+export async function copyShiftAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att kopiera pass')
+  const shiftId = value(formData, 'shift_id')
+  const targetDate = value(formData, 'target_date')
+  const targetStaffId = value(formData, 'target_staff_profile_id')
+  const targetTeamId = value(formData, 'target_team_id')
+  const conflictMode = value(formData, 'conflict_mode') ?? 'skip_blocking'
+  if (!shiftId || !targetDate) throw new Error('Pass och måldatum krävs.')
+
+  const { data: shift } = await supabaseAdmin.from('shifts').select('*').eq('id', shiftId).eq('company_id', auth.membership!.companyId).is('archived_at', null).maybeSingle()
+  if (!shift) throw new Error('Passet kunde inte hittas.')
+  const sourceStart = new Date(shift.starts_at)
+  const sourceEnd = new Date(shift.ends_at)
+  const startTime = sourceStart.toISOString().slice(11, 16)
+  const endTime = sourceEnd.toISOString().slice(11, 16)
+  const result = await createShiftFromBulkInput({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    source: 'copy_shift',
+    title: shift.title,
+    shiftDate: targetDate,
+    startTime,
+    endTime,
+    staffProfileId: targetStaffId ?? shift.staff_profile_id ?? null,
+    teamId: targetTeamId ?? shift.team_id ?? null,
+    status: value(formData, 'status') ?? shift.status ?? 'draft',
+    breakMinutes: Number(shift.break_minutes ?? 0),
+    bufferMinutes: Number(shift.buffer_minutes ?? 0),
+    plannedMinutes: 0,
+    transportMode: shift.transport_mode ?? 'car',
+    startLocationType: shift.start_location_type ?? 'company_base',
+    startAddressText: shift.start_address_text ?? null,
+    endLocationType: shift.end_location_type ?? 'company_base',
+    endAddressText: shift.end_address_text ?? null,
+    roleLabel: shift.role_label ?? null,
+    planningLocked: false,
+    notes: shift.notes ? `Kopierat från pass ${shiftId}. ${shift.notes}` : `Kopierat från pass ${shiftId}.`,
+    conflictMode,
+  })
+  if (result.shiftId) {
+    await supabaseAdmin.from('shifts').update({ copied_from_shift_id: shiftId }).eq('id', result.shiftId).eq('company_id', auth.membership!.companyId)
+  }
+  await audit(auth.membership!.companyId, auth.userId, 'copy', 'shift', result.shiftId, { sourceShiftId: shiftId, targetDate, skipped: result.skipped, conflictSummary: result.conflictSummary })
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, targetStaffId ?? shift.staff_profile_id ?? null, targetTeamId ?? shift.team_id ?? null)
+  revalidatePath('/schedule')
+  if (result.shiftId) redirect(`/schedule/${result.shiftId}`)
+  redirect(`/schedule?date=${targetDate}`)
+}
+
+export async function copyWeekAction(formData: FormData) {
+  const auth = await requireMembership('planner', 'att kopiera vecka')
+  const sourceWeekStart = value(formData, 'source_week_start')
+  const targetWeekStart = value(formData, 'target_week_start')
+  const staffProfileId = value(formData, 'staff_profile_id')
+  const teamId = value(formData, 'team_id')
+  const conflictMode = value(formData, 'conflict_mode') ?? 'skip_blocking'
+  if (!sourceWeekStart || !targetWeekStart) throw new Error('Källvecka och målvecka krävs.')
+
+  const sourceWeekEnd = addDaysIsoDate(sourceWeekStart, 6)
+  const offsetDays = Math.round((new Date(`${targetWeekStart}T00:00:00`).getTime() - new Date(`${sourceWeekStart}T00:00:00`).getTime()) / 86400000)
+  let query = supabaseAdmin.from('shifts').select('*').eq('company_id', auth.membership!.companyId).is('archived_at', null).gte('shift_date', sourceWeekStart).lte('shift_date', sourceWeekEnd).order('starts_at')
+  if (staffProfileId) query = query.eq('staff_profile_id', staffProfileId)
+  if (teamId) query = query.eq('team_id', teamId)
+  const { data: shifts, error } = await query
+  if (error) throw new Error(error.message)
+  if (!shifts?.length) throw new Error('Inga pass hittades i källveckan.')
+
+  let created = 0
+  let skipped = 0
+  let conflicts = 0
+  const bulkGroupId = crypto.randomUUID()
+  for (const shift of shifts as any[]) {
+    const targetDate = addDaysIsoDate(shift.shift_date, offsetDays)
+    const startTime = new Date(shift.starts_at).toISOString().slice(11, 16)
+    const endTime = new Date(shift.ends_at).toISOString().slice(11, 16)
+    const result = await createShiftFromBulkInput({
+      companyId: auth.membership!.companyId,
+      actorUserId: auth.userId,
+      source: 'copy_week',
+      bulkGroupId,
+      title: shift.title,
+      shiftDate: targetDate,
+      startTime,
+      endTime,
+      staffProfileId: shift.staff_profile_id ?? null,
+      teamId: shift.team_id ?? null,
+      status: value(formData, 'status') ?? shift.status ?? 'draft',
+      breakMinutes: Number(shift.break_minutes ?? 0),
+      bufferMinutes: Number(shift.buffer_minutes ?? 0),
+      plannedMinutes: 0,
+      transportMode: shift.transport_mode ?? 'car',
+      startLocationType: shift.start_location_type ?? 'company_base',
+      startAddressText: shift.start_address_text ?? null,
+      endLocationType: shift.end_location_type ?? 'company_base',
+      endAddressText: shift.end_address_text ?? null,
+      roleLabel: shift.role_label ?? null,
+      planningLocked: false,
+      notes: shift.notes,
+      conflictMode,
+    })
+    if (result.conflictSummary) conflicts += 1
+    if (result.skipped) skipped += 1
+    else {
+      created += 1
+      if (result.shiftId) await supabaseAdmin.from('shifts').update({ copied_from_shift_id: shift.id, copied_from_week_start: sourceWeekStart, copied_to_week_start: targetWeekStart }).eq('id', result.shiftId).eq('company_id', auth.membership!.companyId)
+    }
+  }
+  await audit(auth.membership!.companyId, auth.userId, 'copy_week', 'shifts', null, { sourceWeekStart, targetWeekStart, created, skipped, conflicts, bulkGroupId })
+  await refreshAvailabilityConflicts(auth.membership!.companyId, auth.userId, staffProfileId, teamId)
+  revalidatePath('/schedule')
+  redirect(`/schedule?date=${targetWeekStart}`)
 }

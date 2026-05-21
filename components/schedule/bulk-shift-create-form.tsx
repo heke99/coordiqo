@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState } from 'react'
+import { useActionState, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 
 import { Field, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
@@ -34,16 +34,32 @@ type ShiftPresetOption = {
 
 type BulkShiftFormValues = Record<string, string | string[]>
 
+type BulkShiftPreview = {
+  total: number
+  warnings: number
+  blocking: number
+  valid: number
+  targetCount: number
+  targetStaffCount: number
+  teamCount: number
+  dateCount: number
+  title: string
+  capacityPerShift: number
+  totalCapacity: number
+  examples: Array<{ date: string; target: string; conflict: string | null }>
+}
+
 type BulkShiftFormState = {
-  ok?: boolean
-  message?: string
-  fieldErrors?: Record<string, string>
-  values?: BulkShiftFormValues
+  ok: boolean
+  message: string
+  fieldErrors: Record<string, string>
+  values: BulkShiftFormValues
+  preview?: BulkShiftPreview
 }
 
 const initialState: BulkShiftFormState = {
-  ok: undefined,
-  message: undefined,
+  ok: false,
+  message: '',
   fieldErrors: {},
   values: {},
 }
@@ -81,11 +97,14 @@ function choicePanelClass(state: BulkShiftFormState, key: string) {
     : 'mt-2 grid max-h-72 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3'
 }
 
-function SubmitButton() {
+function SubmitButton({ intent, children, variant = 'primary' }: { intent: 'preview' | 'create'; children: ReactNode; variant?: 'primary' | 'secondary' }) {
   const { pending } = useFormStatus()
+  const className = variant === 'primary'
+    ? 'rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60'
+    : 'rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
   return (
-    <button disabled={pending} className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-      {pending ? 'Skapar pass…' : 'Skapa pass'}
+    <button name="action_intent" value={intent} disabled={pending} className={className}>
+      {pending ? 'Arbetar…' : children}
     </button>
   )
 }
@@ -111,12 +130,39 @@ export function BulkShiftCreateForm({
 
   return (
     <form action={formAction} className="grid gap-4 lg:grid-cols-3" noValidate>
+      {state.ok === true && state.message ? (
+        <div role="status" className="lg:col-span-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <p className="font-semibold">{state.message}</p>
+        </div>
+      ) : null}
+
       {state.ok === false ? (
         <div role="alert" className="lg:col-span-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           <p className="font-semibold">Kontrollera formuläret</p>
           <p className="mt-1">{state.message ?? 'Något behöver rättas innan pass kan skapas.'}</p>
           {targetError ? <p className="mt-1 text-xs font-semibold">{targetError}</p> : null}
         </div>
+      ) : null}
+
+      {state.preview ? (
+        <section className="lg:col-span-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">Preview: {state.preview.title}</p>
+              <p className="mt-1 text-sm text-slate-600">{state.preview.targetCount} mål × {state.preview.dateCount} dagar = {state.preview.total} pass. Giltiga: {state.preview.valid}. Blockerande konflikter: {state.preview.blocking}. Total planerbar kapacitet: {state.preview.totalCapacity} min.</p>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">{state.preview.capacityPerShift} min/pass</span>
+          </div>
+          {state.preview.examples.length ? (
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {state.preview.examples.map((item, index) => (
+                <div key={`${item.date}-${item.target}-${index}`} className="rounded-2xl bg-white p-3 text-xs text-slate-700">
+                  <b>{item.date}</b> · {item.conflict ? <span className="text-red-700">{item.conflict}</span> : <span className="text-emerald-700">OK</span>}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       <Field label="Preset">
@@ -271,7 +317,8 @@ export function BulkShiftCreateForm({
       </div>
 
       <div className="lg:col-span-3 flex flex-wrap items-center gap-3">
-        <SubmitButton />
+        <SubmitButton intent="preview" variant="secondary">Förhandsgranska</SubmitButton>
+        <SubmitButton intent="create">Skapa pass</SubmitButton>
         <Link href="/availability/presets" className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800">Hantera presets</Link>
       </div>
     </form>

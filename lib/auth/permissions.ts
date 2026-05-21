@@ -12,6 +12,7 @@ export type CompanyRole =
   | 'read_only'
 
 export type PermissionAction =
+  | 'platform.manage'
   | 'company.manage'
   | 'team.manage'
   | 'staff.manage'
@@ -26,6 +27,8 @@ export type PermissionAction =
   | 'document.manage'
   | 'support.manage'
   | 'audit.view'
+  | 'health.view'
+  | 'notification.manage'
 
 export const COMPANY_ROLE_RANK: Record<CompanyRole, number> = {
   company_admin: 100,
@@ -52,6 +55,11 @@ export const COMPANY_ROLE_LABELS: Record<CompanyRole, string> = {
 }
 
 export const PERMISSION_MATRIX: Record<PermissionAction, { label: string; minimumRole: CompanyRole; description: string }> = {
+  'platform.manage': {
+    label: 'Plattformsadmin',
+    minimumRole: 'company_admin',
+    description: 'Endast superadmin/plattformsroller. Visas i matrisen för tydlighet men används inte som företagsrättighet.',
+  },
   'company.manage': {
     label: 'Hantera företag',
     minimumRole: 'operations_manager',
@@ -121,6 +129,16 @@ export const PERMISSION_MATRIX: Record<PermissionAction, { label: string; minimu
     label: 'Se audit',
     minimumRole: 'operations_manager',
     description: 'Se känsliga historik- och ändringshändelser.',
+  },
+  'health.view': {
+    label: 'Se systemhälsa',
+    minimumRole: 'operations_manager',
+    description: 'Kontrollera saknad grundsetup, driftberedskap och blockerande konfiguration.',
+  },
+  'notification.manage': {
+    label: 'Hantera notiser',
+    minimumRole: 'planner',
+    description: 'Se, markera och följa upp notiser och driftvarningar.',
   },
 }
 
@@ -194,5 +212,16 @@ export function assertCompanyPermission(role: CompanyRole | null | undefined, mi
 export function assertPermission(role: CompanyRole | null | undefined, action: PermissionAction) {
   if (!can(role, action)) {
     throw new Error(`Du saknar behörighet för ${PERMISSION_MATRIX[action].label.toLowerCase()}.`)
+  }
+}
+
+
+export function isPlatformAdminRole(role: PlatformRole | null | undefined) {
+  return role === 'owner' || role === 'platform_admin' || role === 'support_admin'
+}
+
+export function assertPlatformAdminRole(role: PlatformRole | null | undefined, label = 'plattformsåtgärden') {
+  if (!isPlatformAdminRole(role)) {
+    throw new Error(`Du saknar behörighet för ${label}.`)
   }
 }

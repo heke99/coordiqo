@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { switchActiveCompanyAction } from '@/lib/platform/actions'
+import { isPlatformAdminRole } from '@/lib/auth/permissions'
 import type { AuthContext } from '@/lib/auth/session'
 
 const primaryNav = [
@@ -31,6 +32,18 @@ const settingsNav = [
   { href: '/settings', label: 'Inställningar' },
   { href: '/settings/industry', label: 'Branschmotor' },
   { href: '/settings/skills', label: 'Kompetenser' },
+  { href: '/settings/permissions', label: 'Behörigheter' },
+  { href: '/settings/invitations', label: 'Inbjudningar' },
+  { href: '/settings/health', label: 'Systemhälsa' },
+  { href: '/settings/support', label: 'Supportläge' },
+  { href: '/audit', label: 'Auditlogg' },
+  { href: '/notifications', label: 'Notiser' },
+]
+
+const platformNav = [
+  { href: '/admin', label: 'Superadmin' },
+  { href: '/admin/companies', label: 'Bolag' },
+  { href: '/admin/access-requests', label: 'Ansökningar' },
 ]
 
 type AppShellProps = {
@@ -45,6 +58,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
   const companyName = auth.membership?.companyName ?? 'Ingen aktiv miljö'
   const role = auth.membership?.companyRole ?? 'saknar roll'
   const industryLabel = auth.membership?.industryLabel ?? 'Bransch ej vald'
+  const isPlatformAdmin = isPlatformAdminRole(auth.platformRole)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -114,6 +128,20 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
             </nav>
           </div>
 
+
+          {isPlatformAdmin ? (
+            <div className="mt-6 border-t border-slate-200 pt-4">
+              <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Plattform</p>
+              <nav className="mt-2 space-y-1 pb-4">
+                {platformNav.map((item) => (
+                  <Link key={item.href} href={item.href} className="block rounded-2xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          ) : null}
+
           <div className="border-t border-slate-200 pt-4">
             <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Inställningar</p>
             <nav className="mt-2 space-y-1 pb-4">
@@ -159,7 +187,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
 
         <div className="border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
           <nav className="flex gap-2 overflow-x-auto pb-1 coordiqo-scrollbar">
-            {[...primaryNav, ...secondaryNav, ...settingsNav].map((item) => (
+            {[...primaryNav, ...secondaryNav, ...(isPlatformAdmin ? platformNav : []), ...settingsNav].map((item) => (
               <Link key={item.href} href={item.href} className="shrink-0 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
                 {item.label}
               </Link>

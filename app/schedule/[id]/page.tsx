@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { archiveShiftAction, updateShiftAction } from '@/lib/platform/actions'
+import { archiveShiftAction, copyShiftAction, updateShiftAction } from '@/lib/platform/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -23,5 +23,69 @@ export default async function ShiftDetailPage({ params }: { params: Promise<{ id
     supabaseAdmin.from('availability_conflicts').select('*').eq('company_id', auth.membership.companyId).eq('shift_id', id).is('archived_at', null).order('created_at', { ascending: false }),
   ])
   if (!shift) notFound()
-  return <AppShell auth={auth} title={shift.title ?? 'Pass'} subtitle="Redigera pass, kapacitet, låsningar och planeringskonflikter."><div className="grid gap-5 lg:grid-cols-[1fr_0.75fr]"><FormCard title="Redigera pass"><form action={updateShiftAction} className="grid gap-4 sm:grid-cols-2"><input type="hidden" name="id" value={shift.id} /><Field label="Titel"><input name="title" defaultValue={shift.title ?? ''} className={inputClassName} /></Field><Field label="Datum"><input name="shift_date" type="date" defaultValue={dateValue(shift.starts_at)} required className={inputClassName} /></Field><Field label="Starttid"><input name="start_time" type="time" defaultValue={timeValue(shift.starts_at)} required className={inputClassName} /></Field><Field label="Sluttid"><input name="end_time" type="time" defaultValue={timeValue(shift.ends_at)} required className={inputClassName} /></Field><Field label="Personal"><select name="staff_profile_id" defaultValue={shift.staff_profile_id ?? ''} className={selectClassName}><option value="">Ingen personal</option>{staff?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></Field><Field label="Team"><select name="team_id" defaultValue={shift.team_id ?? ''} className={selectClassName}><option value="">Inget team</option>{teams?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field><Field label="Rast minuter"><input name="break_minutes" type="number" min="0" defaultValue={shift.break_minutes ?? 0} className={inputClassName} /></Field><Field label="Buffer minuter"><input name="buffer_minutes" type="number" min="0" defaultValue={shift.buffer_minutes ?? 0} className={inputClassName} /></Field><Field label="Planerat minuter"><input name="planned_minutes" type="number" min="0" defaultValue={shift.planned_minutes ?? 0} className={inputClassName} /></Field><Field label="Färdsätt"><select name="transport_mode" defaultValue={shift.transport_mode ?? 'car'} className={selectClassName}><option value="car">Bil</option><option value="service_vehicle">Servicebil</option><option value="electric_vehicle">Elbil</option><option value="bike">Cykel</option><option value="walk">Gång</option><option value="public_transport">Kollektivtrafik</option><option value="mixed">Mixat</option></select></Field><Field label="Startplats"><select name="start_location_type" defaultValue={shift.start_location_type ?? 'company_base'} className={selectClassName}><option value="home">Hem</option><option value="company_base">Kontor/företagsbas</option><option value="team_base">Team-bas</option><option value="custom">Egen adress</option><option value="first_task">Första uppdraget</option></select></Field><Field label="Startadress"><input name="start_address_text" defaultValue={shift.start_address_text ?? ''} className={inputClassName} /></Field><Field label="Slutplats"><select name="end_location_type" defaultValue={shift.end_location_type ?? 'company_base'} className={selectClassName}><option value="home">Hem</option><option value="company_base">Kontor/företagsbas</option><option value="team_base">Team-bas</option><option value="custom">Egen adress</option><option value="last_task">Sista uppdraget</option></select></Field><Field label="Slutadress"><input name="end_address_text" defaultValue={shift.end_address_text ?? ''} className={inputClassName} /></Field><Field label="Status"><select name="status" defaultValue={shift.status} className={selectClassName}><option value="draft">Utkast</option><option value="planned">Planerat</option><option value="confirmed">Bekräftat</option><option value="cancelled">Avbokat</option></select></Field><Field label="Lås pass"><select name="planning_locked" defaultValue={shift.planning_locked ? 'true' : 'false'} className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field><div className="sm:col-span-2"><Field label="Låsningsorsak"><input name="locked_reason" defaultValue={shift.locked_reason ?? ''} className={inputClassName} /></Field></div><div className="sm:col-span-2"><Field label="Anteckningar"><textarea name="notes" defaultValue={shift.notes ?? ''} className={textareaClassName} /></Field></div><div className="sm:col-span-2 flex flex-wrap gap-3"><button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Spara pass</button></div></form></FormCard><div className="space-y-5"><section className="coordiqo-card p-5"><div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-950">Kapacitet</h2><StatusBadge status={shift.status} /></div><div className="mt-4 grid gap-3 text-sm text-slate-600"><p>Total arbetstid: <b>{shift.total_minutes}</b> min</p><p>Rast: <b>{shift.break_minutes}</b> min · Buffer: <b>{shift.buffer_minutes}</b> min</p><p>Kapacitet: <b>{shift.capacity_minutes}</b> min</p><p>Planerat: <b>{shift.planned_minutes}</b> min</p><p>Kvar: <b>{shift.remaining_minutes}</b> min</p><p>{shift.planning_locked ? 'Passet är låst för AI/mallar.' : 'Passet kan användas av mallar och planeringsmotor.'}</p></div><form action={archiveShiftAction} className="mt-4"><input type="hidden" name="id" value={shift.id} /><button className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Arkivera pass</button></form></section><section className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Konflikter</h2><div className="mt-4 space-y-3">{conflicts?.length ? conflicts.map((c: any) => <div key={c.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="font-semibold text-amber-950">{c.message}</p><p className="mt-1 text-xs text-amber-700">{c.conflict_type} · {c.severity}</p></div>) : <p className="text-sm text-slate-600">Inga öppna konflikter på passet.</p>}</div></section></div></div></AppShell>
+
+  return (
+    <AppShell auth={auth} title={shift.title ?? 'Pass'} subtitle="Redigera pass, kopiera pass, kapacitet, låsningar och planeringskonflikter.">
+      <div className="grid gap-5 lg:grid-cols-[1fr_0.75fr]">
+        <FormCard title="Redigera pass">
+          <form action={updateShiftAction} className="grid gap-4 sm:grid-cols-2">
+            <input type="hidden" name="id" value={shift.id} />
+            <Field label="Titel"><input name="title" defaultValue={shift.title ?? ''} className={inputClassName} /></Field>
+            <Field label="Datum"><input name="shift_date" type="date" defaultValue={dateValue(shift.starts_at)} required className={inputClassName} /></Field>
+            <Field label="Starttid"><input name="start_time" type="time" defaultValue={timeValue(shift.starts_at)} required className={inputClassName} /></Field>
+            <Field label="Sluttid"><input name="end_time" type="time" defaultValue={timeValue(shift.ends_at)} required className={inputClassName} /></Field>
+            <Field label="Personal"><select name="staff_profile_id" defaultValue={shift.staff_profile_id ?? ''} className={selectClassName}><option value="">Ingen personal</option>{staff?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></Field>
+            <Field label="Team"><select name="team_id" defaultValue={shift.team_id ?? ''} className={selectClassName}><option value="">Inget team</option>{teams?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+            <Field label="Rast minuter"><input name="break_minutes" type="number" min="0" defaultValue={shift.break_minutes ?? 0} className={inputClassName} /></Field>
+            <Field label="Buffer minuter"><input name="buffer_minutes" type="number" min="0" defaultValue={shift.buffer_minutes ?? 0} className={inputClassName} /></Field>
+            <Field label="Planerat minuter"><input name="planned_minutes" type="number" min="0" defaultValue={shift.planned_minutes ?? 0} className={inputClassName} /></Field>
+            <Field label="Färdsätt"><select name="transport_mode" defaultValue={shift.transport_mode ?? 'car'} className={selectClassName}><option value="car">Bil</option><option value="service_vehicle">Servicebil</option><option value="electric_vehicle">Elbil</option><option value="bike">Cykel</option><option value="walk">Gång</option><option value="public_transport">Kollektivtrafik</option><option value="mixed">Mixat</option></select></Field>
+            <Field label="Startplats"><select name="start_location_type" defaultValue={shift.start_location_type ?? 'company_base'} className={selectClassName}><option value="home">Hem</option><option value="company_base">Kontor/företagsbas</option><option value="team_base">Team-bas</option><option value="custom">Egen adress</option><option value="first_task">Första uppdraget</option></select></Field>
+            <Field label="Startadress"><input name="start_address_text" defaultValue={shift.start_address_text ?? ''} className={inputClassName} /></Field>
+            <Field label="Slutplats"><select name="end_location_type" defaultValue={shift.end_location_type ?? 'company_base'} className={selectClassName}><option value="home">Hem</option><option value="company_base">Kontor/företagsbas</option><option value="team_base">Team-bas</option><option value="custom">Egen adress</option><option value="last_task">Sista uppdraget</option></select></Field>
+            <Field label="Slutadress"><input name="end_address_text" defaultValue={shift.end_address_text ?? ''} className={inputClassName} /></Field>
+            <Field label="Status"><select name="status" defaultValue={shift.status} className={selectClassName}><option value="draft">Utkast</option><option value="planned">Planerat</option><option value="confirmed">Bekräftat</option><option value="cancelled">Avbokat</option></select></Field>
+            <Field label="Lås pass"><select name="planning_locked" defaultValue={shift.planning_locked ? 'true' : 'false'} className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field>
+            <div className="sm:col-span-2"><Field label="Låsningsorsak"><input name="locked_reason" defaultValue={shift.locked_reason ?? ''} className={inputClassName} /></Field></div>
+            <div className="sm:col-span-2"><Field label="Anteckningar"><textarea name="notes" defaultValue={shift.notes ?? ''} className={textareaClassName} /></Field></div>
+            <div className="sm:col-span-2 flex flex-wrap gap-3"><button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Spara pass</button></div>
+          </form>
+        </FormCard>
+
+        <div className="space-y-5">
+          <section className="coordiqo-card p-5">
+            <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-950">Kapacitet</h2><StatusBadge status={shift.status} /></div>
+            <div className="mt-4 grid gap-3 text-sm text-slate-600">
+              <p>Total arbetstid: <b>{shift.total_minutes}</b> min</p>
+              <p>Rast: <b>{shift.break_minutes}</b> min · Buffer: <b>{shift.buffer_minutes}</b> min</p>
+              <p>Kapacitet: <b>{shift.capacity_minutes}</b> min</p>
+              <p>Planerat: <b>{shift.planned_minutes}</b> min</p>
+              <p>Kvar: <b>{shift.remaining_minutes}</b> min</p>
+              <p>{shift.planning_locked ? 'Passet är låst för AI/mallar.' : 'Passet kan användas av mallar och planeringsmotor.'}</p>
+            </div>
+            <form action={archiveShiftAction} className="mt-4"><input type="hidden" name="id" value={shift.id} /><button className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Arkivera pass</button></form>
+          </section>
+
+          <FormCard title="Kopiera pass" description="Skapa en kopia på annan dag, personal eller team. Konflikter kan hoppas över eller kopieras med varning.">
+            <form action={copyShiftAction} className="space-y-4">
+              <input type="hidden" name="shift_id" value={shift.id} />
+              <Field label="Måldatum"><input name="target_date" type="date" required className={inputClassName} /></Field>
+              <Field label="Personal"><select name="target_staff_profile_id" defaultValue={shift.staff_profile_id ?? ''} className={selectClassName}><option value="">Behåll/ingen personal</option>{staff?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></Field>
+              <Field label="Team"><select name="target_team_id" defaultValue={shift.team_id ?? ''} className={selectClassName}><option value="">Behåll/inget team</option>{teams?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+              <Field label="Status"><select name="status" defaultValue="draft" className={selectClassName}><option value="draft">Utkast</option><option value="planned">Planerat</option><option value="confirmed">Bekräftat</option></select></Field>
+              <Field label="Konflikter"><select name="conflict_mode" defaultValue="skip_blocking" className={selectClassName}><option value="skip_blocking">Hoppa över konflikt</option><option value="create_all">Kopiera med varning</option></select></Field>
+              <button className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Kopiera pass</button>
+            </form>
+          </FormCard>
+
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Konflikter</h2>
+            <div className="mt-4 space-y-3">
+              {conflicts?.length ? conflicts.map((c: any) => <div key={c.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="font-semibold text-amber-950">{c.message}</p><p className="mt-1 text-xs text-amber-700">{c.conflict_type} · {c.severity}</p></div>) : <p className="text-sm text-slate-600">Inga öppna konflikter på passet.</p>}
+            </div>
+          </section>
+        </div>
+      </div>
+    </AppShell>
+  )
 }

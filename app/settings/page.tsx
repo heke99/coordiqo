@@ -21,6 +21,42 @@ const settingsSections = [
     status: 'aktiv',
   },
   {
+    href: '/settings/permissions',
+    title: 'Behörigheter och RBAC',
+    description: 'Hantera permission overrides per company-roll och säkerställ att rätt roll ser rätt ytor.',
+    status: 'ny',
+  },
+  {
+    href: '/settings/invitations',
+    title: 'Inbjudningar',
+    description: 'Skicka invites via email, skicka om länkar och avbryt felaktiga inbjudningar.',
+    status: 'ny',
+  },
+  {
+    href: '/settings/health',
+    title: 'Systemhälsa',
+    description: 'Readiness-check för bransch, presets, email, storage, maps, AI och grunddata.',
+    status: 'ny',
+  },
+  {
+    href: '/settings/support',
+    title: 'Supportläge',
+    description: 'Starta och avsluta audit-loggade supportsessioner med tydlig orsak.',
+    status: 'ny',
+  },
+  {
+    href: '/audit',
+    title: 'Auditlogg',
+    description: 'Spåra ändringar, overrides, invites, supportåtgärder och publiceringar.',
+    status: 'ny',
+  },
+  {
+    href: '/notifications',
+    title: 'Notiser',
+    description: 'Samlad vy för in-app notiser kopplade till drift, invites och bolagsbeslut.',
+    status: 'ny',
+  },
+  {
     href: '/resources',
     title: 'Resurser och ansvar',
     description: 'Administrera fordon, nycklar, verktyg och andra resurser som kan kopplas till uppdrag och personal.',
@@ -77,7 +113,7 @@ export default async function SettingsPage() {
         <EmptyState
           eyebrow="Kommande företagsadmin"
           title="Nästa nivå blir fler företagsinställningar"
-          description="När vi bygger vidare kan denna sida samla inbjudningar, behörigheter, auditlogg, integrationer, import och supportläge. Länkar visas först när sidorna faktiskt finns, så admin slipper 404-sidor."
+          description="Batch 1-ytorna är nu samlade här: behörigheter, inbjudningar, audit, systemhälsa, support och notiser. Nästa steg är att koppla fler integrationer och import/export när plattformen hårdas ytterligare."
         />
       </div>
     </AppShell>
