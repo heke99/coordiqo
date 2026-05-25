@@ -15,6 +15,7 @@ export type AuthCompanyMembership = {
   industryLabel: string
   operationalModel: string | null
   operationalModelLabel: string
+  lifecycleStatus: string | null
   activeModules: string[]
   uiLabelSet: string | null
   isDefault: boolean
@@ -63,7 +64,7 @@ export async function requireAuth(): Promise<AuthContext> {
     ? await Promise.all([
         supabaseAdmin
           .from('companies')
-          .select('id, name, slug, status, industry_type, operational_model')
+          .select('id, name, slug, status, lifecycle_status, industry_type, operational_model')
           .in('id', companyIds),
         supabaseAdmin
           .from('company_settings')
@@ -79,6 +80,7 @@ export async function requireAuth(): Promise<AuthContext> {
     .map((membershipRecord: any) => {
       const companyRecord = companyById.get(membershipRecord.company_id)
       if (!companyRecord || companyRecord.status !== 'active') return null
+      if ((companyRecord.lifecycle_status ?? 'active') !== 'active') return null
       const settingsRecord = settingsByCompanyId.get(membershipRecord.company_id)
 
       return {
@@ -91,6 +93,7 @@ export async function requireAuth(): Promise<AuthContext> {
         industryLabel: getIndustryLabel(companyRecord.industry_type),
         operationalModel: companyRecord.operational_model ?? null,
         operationalModelLabel: getOperationalModelLabel(companyRecord.operational_model),
+        lifecycleStatus: companyRecord.lifecycle_status ?? null,
         activeModules: settingsRecord?.active_modules ?? [],
         uiLabelSet: settingsRecord?.ui_label_set ?? null,
         isDefault: Boolean(membershipRecord.is_default),
@@ -103,6 +106,10 @@ export async function requireAuth(): Promise<AuthContext> {
 
   if (membershipRecord && companyRecord?.status === 'inactive') {
     redirect('/login?error=inactive-company')
+  }
+
+  if (membershipRecord && companyRecord && (companyRecord.lifecycle_status ?? 'active') !== 'active') {
+    redirect('/login?error=company-not-active')
   }
 
   return {

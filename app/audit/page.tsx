@@ -16,7 +16,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
   let query = supabaseAdmin
     .from('audit_logs')
-    .select('id, company_id, actor_user_id, action, entity_type, entity_id, metadata, created_at, companies(name), profiles(full_name)')
+    .select('id, company_id, actor_user_id, action, entity_type, entity_id, metadata, action_source, actor_role, entity_display_name, before_value, after_value, request_id, created_at, companies(name), profiles(full_name)')
     .order('created_at', { ascending: false })
     .limit(150)
 
@@ -40,15 +40,16 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         <section className="coordiqo-card overflow-hidden">
           <div className="overflow-x-auto coordiqo-scrollbar">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr><th className="px-4 py-3 text-left font-semibold">Tid</th><th className="px-4 py-3 text-left font-semibold">Bolag</th><th className="px-4 py-3 text-left font-semibold">Action</th><th className="px-4 py-3 text-left font-semibold">Entity</th><th className="px-4 py-3 text-left font-semibold">Actor</th><th className="px-4 py-3 text-left font-semibold">Metadata</th></tr></thead>
+              <thead className="bg-slate-50"><tr><th className="px-4 py-3 text-left font-semibold">Tid</th><th className="px-4 py-3 text-left font-semibold">Bolag</th><th className="px-4 py-3 text-left font-semibold">Action</th><th className="px-4 py-3 text-left font-semibold">Entity</th><th className="px-4 py-3 text-left font-semibold">Actor</th><th className="px-4 py-3 text-left font-semibold">Källa</th><th className="px-4 py-3 text-left font-semibold">Metadata</th></tr></thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {(events ?? []).map((event: any) => (
                   <tr key={event.id}>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">{new Date(event.created_at).toLocaleString('sv-SE')}</td>
                     <td className="px-4 py-3 text-slate-600">{event.companies?.name ?? 'Plattform'}</td>
                     <td className="px-4 py-3"><StatusBadge status={event.action} /></td>
-                    <td className="px-4 py-3 text-slate-600"><span className="font-semibold text-slate-950">{event.entity_type}</span><br /><span className="text-xs">{event.entity_id ?? 'saknas'}</span></td>
-                    <td className="px-4 py-3 text-slate-600">{event.profiles?.full_name ?? event.actor_user_id}</td>
+                    <td className="px-4 py-3 text-slate-600"><span className="font-semibold text-slate-950">{event.entity_display_name ?? event.entity_type}</span><br /><span className="text-xs">{event.entity_type} · {event.entity_id ?? 'saknas'}</span></td>
+                    <td className="px-4 py-3 text-slate-600">{event.profiles?.full_name ?? event.actor_user_id}<br /><span className="text-xs text-slate-400">{event.actor_role ?? 'roll saknas'}</span></td>
+                    <td className="px-4 py-3 text-slate-600"><StatusBadge status={event.action_source ?? event.metadata?.source ?? 'manual'} /></td>
                     <td className="max-w-md px-4 py-3"><pre className="max-h-28 overflow-auto rounded-xl bg-slate-50 p-2 text-xs text-slate-600 coordiqo-scrollbar">{JSON.stringify(event.metadata ?? {}, null, 2)}</pre></td>
                   </tr>
                 ))}

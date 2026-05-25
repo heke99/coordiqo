@@ -23,7 +23,7 @@ export default async function AdminCompanyDetailPage({ params }: { params: Promi
     Promise.all([
       supabaseAdmin.from('tasks').select('id', { count: 'exact', head: true }).eq('company_id', id),
       supabaseAdmin.from('staff_profiles').select('id', { count: 'exact', head: true }).eq('company_id', id),
-      supabaseAdmin.from('resources').select('id', { count: 'exact', head: true }).eq('company_id', id),
+      supabaseAdmin.from('resource_assets').select('id', { count: 'exact', head: true }).eq('company_id', id),
       supabaseAdmin.from('planning_runs').select('id', { count: 'exact', head: true }).eq('company_id', id),
       supabaseAdmin.from('entity_documents').select('id', { count: 'exact', head: true }).eq('company_id', id),
     ]),

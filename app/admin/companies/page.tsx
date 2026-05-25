@@ -23,7 +23,7 @@ export default async function AdminCompaniesPage() {
 
   const { data: companies } = await supabaseAdmin
     .from('companies')
-    .select('id, name, slug, status, lifecycle_status, industry_type, operational_model, approval_note, created_at, company_memberships(id, status), tasks(id), resources(id), planning_runs(id)')
+    .select('id, name, slug, status, lifecycle_status, industry_type, operational_model, approval_note, created_at, company_memberships(id, status), tasks(id), resource_assets(id), planning_runs(id)')
     .order('created_at', { ascending: false })
 
   return (
@@ -37,7 +37,7 @@ export default async function AdminCompaniesPage() {
                 <Link href={`/admin/companies/${company.id}`} className="min-w-0">
                   <h2 className="text-lg font-semibold text-slate-950">{company.name}</h2>
                   <p className="mt-1 text-sm text-slate-500">{company.slug ?? 'slug saknas'} · {company.industry_type ?? 'bransch saknas'} · {company.operational_model ?? 'modell saknas'}</p>
-                  <p className="mt-2 text-xs text-slate-500">{company.company_memberships?.length ?? 0} användare · {company.tasks?.length ?? 0} uppdrag · {company.resources?.length ?? 0} resurser · {company.planning_runs?.length ?? 0} planeringskörningar</p>
+                  <p className="mt-2 text-xs text-slate-500">{company.company_memberships?.length ?? 0} användare · {company.tasks?.length ?? 0} uppdrag · {company.resource_assets?.length ?? 0} resurser · {company.planning_runs?.length ?? 0} planeringskörningar</p>
                 </Link>
                 <div className="flex flex-wrap gap-2"><StatusBadge status={lifecycle} tone={tone(lifecycle)} /><StatusBadge status={company.status} /></div>
               </div>

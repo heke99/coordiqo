@@ -12,6 +12,7 @@ import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
 import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '@/lib/planning/planning-engine'
 import { publishPlanningDraft } from '@/lib/planning/publish-draft'
 import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
+import { logAuditEvent } from '@/lib/platform/audit'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
 import { allCompanyCoreModules, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -284,12 +285,14 @@ async function requirePlatformAdmin(label: string) {
 }
 
 async function audit(companyId: string | null, actorUserId: string, action: string, entityType: string, entityId: string | null, metadata: Record<string, unknown> = {}) {
-  await supabaseAdmin.from('audit_logs').insert({
-    company_id: companyId,
-    actor_user_id: actorUserId,
+  await logAuditEvent({
+    companyId,
+    actorUserId,
     action,
-    entity_type: entityType,
-    entity_id: entityId,
+    entityType,
+    entityId,
+    actorRole: typeof metadata.actorRole === 'string' ? metadata.actorRole : null,
+    source: typeof metadata.source === 'string' ? metadata.source as any : 'manual',
     metadata,
   })
 }
@@ -3181,14 +3184,19 @@ export async function switchActiveCompanyAction(formData: FormData) {
 
   const { data: membership, error } = await supabaseAdmin
     .from('company_memberships')
-    .select('id, company_id')
+    .select('id, company_id, companies(status, lifecycle_status)')
     .eq('id', membershipId)
     .eq('user_id', auth.userId)
     .eq('status', 'active')
+    .is('archived_at', null)
     .maybeSingle()
 
   if (error) throw new Error(error.message)
   if (!membership) throw new Error('Du har inte åtkomst till detta företag.')
+  const company = Array.isArray((membership as any).companies) ? (membership as any).companies[0] : (membership as any).companies
+  if (!company || company.status !== 'active' || (company.lifecycle_status ?? 'active') !== 'active') {
+    throw new Error('Företaget är inte aktivt och kan inte väljas som aktiv arbetsyta.')
+  }
 
   await supabaseAdmin.from('company_memberships').update({ is_default: false }).eq('user_id', auth.userId)
   const { error: updateError } = await supabaseAdmin.from('company_memberships').update({ is_default: true }).eq('id', membership.id)
