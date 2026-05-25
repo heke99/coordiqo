@@ -29,6 +29,10 @@ export async function getFoundationHealthChecks(companyId: string) {
     auditEvents,
     notifications,
     permissionOverrides,
+    routingProviders,
+    tasksWithCoordinates,
+    routeStopsWithCoordinates,
+    matrixEntries,
     companyRes,
   ] = await Promise.all([
     countRows('company_memberships', companyId),
@@ -44,6 +48,10 @@ export async function getFoundationHealthChecks(companyId: string) {
     countRows('audit_logs', companyId),
     countRows('notifications', companyId),
     countRows('company_role_permissions', companyId),
+    supabaseAdmin.from('routing_provider_configs').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('is_active', true).is('archived_at', null),
+    supabaseAdmin.from('tasks').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null).not('location_latitude', 'is', null).not('location_longitude', 'is', null),
+    supabaseAdmin.from('route_plan_stops').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null).not('latitude', 'is', null).not('longitude', 'is', null),
+    supabaseAdmin.from('route_distance_cache').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
     supabaseAdmin.from('companies').select('id, status, lifecycle_status, industry_type, operational_model').eq('id', companyId).maybeSingle(),
   ])
 
@@ -136,6 +144,38 @@ export async function getFoundationHealthChecks(companyId: string) {
       severity: 'info',
       href: '/settings/permissions',
       detail: `${permissionOverrides} permission overrides`,
+    },
+    {
+      key: 'routing_provider_foundation',
+      label: 'Routingprovider-tabeller finns',
+      ok: (routingProviders.count ?? 0) > 0,
+      severity: 'warning',
+      href: '/operations/today',
+      detail: `${routingProviders.count ?? 0} aktiva routingprofiler`,
+    },
+    {
+      key: 'task_coordinates',
+      label: 'Uppdrag har kartkoordinater',
+      ok: (tasksWithCoordinates.count ?? 0) > 0,
+      severity: 'warning',
+      href: '/tasks',
+      detail: `${tasksWithCoordinates.count ?? 0} uppdrag med koordinater`,
+    },
+    {
+      key: 'route_stop_coordinates',
+      label: 'Ruttstopp kan ritas på karta',
+      ok: (routeStopsWithCoordinates.count ?? 0) >= 0,
+      severity: 'info',
+      href: '/operations/today',
+      detail: `${routeStopsWithCoordinates.count ?? 0} ruttstopp med koordinater`,
+    },
+    {
+      key: 'matrix_cache',
+      label: 'Matrix-cache är redo',
+      ok: (matrixEntries.count ?? 0) >= 0,
+      severity: 'info',
+      href: '/operations/today',
+      detail: `${matrixEntries.count ?? 0} cachade restidsrader`,
     },
   ]
 

@@ -3,11 +3,13 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
+import { OperationsMap } from '@/components/maps/operations-map'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
 import { getIndustryPreset } from '@/lib/industry/config'
-import { buildDailyOperationsSummary, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime } from '@/lib/operations/operations-engine'
+import { buildDailyOperationsSummary, buildTaskWaypoint, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime } from '@/lib/operations/operations-engine'
+import { getRoutingProviderEnvironment } from '@/lib/routing/providers'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function dateBounds(date: string) {
@@ -37,7 +39,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
   const [{ data: assignments }, { data: tasks }, { data: resourceAssignments }, { data: deviations }, { data: conflicts }] = await Promise.all([
     supabaseAdmin
       .from('task_assignments')
-      .select('id, task_id, staff_profile_id, team_id, planned_start_at, planned_end_at, status, staff_profiles(full_name, transport_mode), teams(name), tasks(id, title, status, priority, scheduled_start, scheduled_end, time_window_start, time_window_end, estimated_duration_minutes, custom_fields, entities(name), task_types(name))')
+      .select('id, task_id, staff_profile_id, team_id, planned_start_at, planned_end_at, status, staff_profiles(full_name, transport_mode), teams(name), tasks(id, title, status, priority, scheduled_start, scheduled_end, time_window_start, time_window_end, estimated_duration_minutes, custom_fields, location_label, location_latitude, location_longitude, geocode_status, entities(name, entity_addresses(label, street, postal_code, city, latitude, longitude, formatted_address, is_primary)), task_types(name))')
       .eq('company_id', auth.membership.companyId)
       .is('archived_at', null)
       .lt('planned_start_at', bounds.end)
@@ -46,7 +48,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       .limit(500),
     supabaseAdmin
       .from('tasks')
-      .select('id, title, status, priority, scheduled_start, scheduled_end, time_window_start, time_window_end, estimated_duration_minutes, custom_fields, entities(name), task_types(name)')
+      .select('id, title, status, priority, scheduled_start, scheduled_end, time_window_start, time_window_end, estimated_duration_minutes, custom_fields, location_label, location_latitude, location_longitude, geocode_status, entities(name, entity_addresses(label, street, postal_code, city, latitude, longitude, formatted_address, is_primary)), task_types(name)')
       .eq('company_id', auth.membership.companyId)
       .is('archived_at', null)
       .or(`scheduled_start.gte.${bounds.start},time_window_start.gte.${bounds.start}`)
@@ -86,7 +88,9 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
   const deviationRows = (deviations ?? []) as any[]
   const summary = buildDailyOperationsSummary({ assignments: assignmentRows, tasks: taskRows, resourceAssignments: resourceRows, deviations: deviationRows })
   const routes = groupAssignmentsByRoute(assignmentRows as any)
+  const routingProvider = getRoutingProviderEnvironment()
   const unassignedTasks = taskRows.filter((task) => !assignmentRows.some((assignment) => assignment.task_id === task.id) && !['completed', 'cancelled', 'archived'].includes(task.status ?? '')).sort((a, b) => getTaskSortTime(a).localeCompare(getTaskSortTime(b)))
+  const unassignedWaypoints = unassignedTasks.map((task) => buildTaskWaypoint(task as any)).filter(Boolean)
 
   return (
     <AppShell
@@ -112,6 +116,10 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
         {stat('Resursproblem', summary.resourceIssues, summary.resourceIssues ? 'bg-red-50' : 'bg-white')}
         {stat('Ej kvitterade', summary.unconfirmedResources, summary.unconfirmedResources ? 'bg-amber-50' : 'bg-white')}
       </section>
+
+      <div className="mt-5">
+        <OperationsMap routes={routes} unassignedWaypoints={unassignedWaypoints as any} providerLabel={routingProvider.label} providerDetail={routingProvider.detail} />
+      </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="coordiqo-card p-5">

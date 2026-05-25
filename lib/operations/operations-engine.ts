@@ -1,3 +1,7 @@
+import { coordinateFromCustomFields, coordinateFromValues } from '@/lib/routing/coordinates'
+import { buildRouteMetricSummary } from '@/lib/routing/route-metrics'
+import type { RouteMetricSummary, RoutingWaypoint } from '@/lib/routing/types'
+
 export type DailyTaskRow = {
   id: string
   title: string
@@ -9,7 +13,11 @@ export type DailyTaskRow = {
   time_window_end?: string | null
   estimated_duration_minutes?: number | null
   custom_fields?: Record<string, unknown> | null
-  entities?: { name?: string | null } | null
+  location_label?: string | null
+  location_latitude?: number | string | null
+  location_longitude?: number | string | null
+  geocode_status?: string | null
+  entities?: { name?: string | null; entity_addresses?: Array<{ label?: string | null; street?: string | null; postal_code?: string | null; city?: string | null; latitude?: number | string | null; longitude?: number | string | null; formatted_address?: string | null; is_primary?: boolean | null }> | null } | null
   task_types?: { name?: string | null } | null
 }
 
@@ -118,6 +126,57 @@ export function buildDailyOperationsSummary(params: {
   }
 }
 
+export function getTaskCoordinate(task: DailyTaskRow | null | undefined) {
+  if (!task) return null
+  const direct = coordinateFromValues(task.location_latitude, task.location_longitude, task.location_label ?? task.title, 'tasks.location')
+  if (direct) return direct
+
+  const fromFields = coordinateFromCustomFields(task.custom_fields, task.location_label ?? task.title)
+  if (fromFields) return fromFields
+
+  const addresses = task.entities?.entity_addresses ?? []
+  const primary = addresses.find((address) => address.is_primary) ?? addresses[0]
+  if (primary) {
+    const labelParts = [primary.formatted_address, primary.street, primary.postal_code, primary.city].filter(Boolean)
+    const fromAddress = coordinateFromValues(primary.latitude, primary.longitude, labelParts.join(', ') || task.entities?.name || task.title, 'entity_addresses')
+    if (fromAddress) return fromAddress
+  }
+
+  return null
+}
+
+export function buildAssignmentWaypoint(assignment: DailyAssignmentRow, index = 0): RoutingWaypoint | null {
+  const coordinate = getTaskCoordinate(assignment.tasks)
+  if (!coordinate) return null
+  return {
+    id: assignment.id,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+    label: assignment.tasks?.title ?? coordinate.label ?? `Stopp ${index + 1}`,
+    source: coordinate.source,
+    kind: assignment.tasks?.task_types?.name ?? null,
+    status: assignment.status ?? assignment.tasks?.status ?? null,
+    plannedAt: assignment.planned_start_at,
+    href: assignment.task_id ? `/tasks/${assignment.task_id}` : null,
+  }
+}
+
+export function buildTaskWaypoint(task: DailyTaskRow): RoutingWaypoint | null {
+  const coordinate = getTaskCoordinate(task)
+  if (!coordinate) return null
+  return {
+    id: task.id,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+    label: task.title ?? coordinate.label ?? 'Uppdrag',
+    source: coordinate.source,
+    kind: task.task_types?.name ?? null,
+    status: task.status ?? null,
+    plannedAt: task.scheduled_start ?? task.time_window_start ?? null,
+    href: `/tasks/${task.id}`,
+  }
+}
+
 export function groupAssignmentsByRoute(assignments: DailyAssignmentRow[]) {
   const groups = new Map<string, DailyAssignmentRow[]>()
   for (const assignment of assignments) {
@@ -142,10 +201,16 @@ export function groupAssignmentsByRoute(assignments: DailyAssignmentRow[]) {
       endAt: sorted[sorted.length - 1]?.planned_end_at ?? null,
       stopCount: sorted.length,
       routeText: sorted.map((assignment) => getStopLabel(assignment.tasks)).filter(Boolean).join(' → '),
+      waypoints: sorted.map((assignment, index) => buildAssignmentWaypoint(assignment, index)).filter(Boolean) as RoutingWaypoint[],
+      metrics: buildRouteMetricSummary(sorted.map((assignment, index) => buildAssignmentWaypoint(assignment, index)).filter(Boolean) as RoutingWaypoint[]),
     }
   }).sort((a, b) => (a.startAt ?? '').localeCompare(b.startAt ?? ''))
 }
 
 export function getTaskSortTime(task: DailyTaskRow) {
   return taskTime(task) ?? '9999-12-31T23:59:59.000Z'
+}
+
+export function summarizeRouteWaypoints(waypoints: RoutingWaypoint[]): RouteMetricSummary {
+  return buildRouteMetricSummary(waypoints)
 }

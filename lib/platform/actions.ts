@@ -106,6 +106,18 @@ function customFieldsFromForm(formData: FormData) {
   return customFields
 }
 
+
+function numericValue(formData: FormData, key: string) {
+  const raw = value(formData, key)
+  if (!raw) return null
+  const parsed = Number(raw.replace(',', '.'))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function geocodeStatusFromCoordinates(latitude: number | null, longitude: number | null, fallback: string | null = 'pending') {
+  return latitude !== null && longitude !== null ? 'manual' : fallback
+}
+
 function durationMinutesFromForm(formData: FormData) {
   const rawValue = Number(value(formData, 'duration_value') ?? value(formData, 'estimated_duration_minutes') ?? 60)
   const unit = value(formData, 'duration_unit') ?? 'minutes'
@@ -1472,6 +1484,12 @@ export async function createTaskAction(formData: FormData) {
       estimated_duration_minutes: durationMinutesFromForm(formData),
       sla_due_at: value(formData, 'sla_due_at'),
       recurrence_rule: value(formData, 'recurrence_rule'),
+      location_label: value(formData, 'location_label'),
+      location_latitude: numericValue(formData, 'location_latitude'),
+      location_longitude: numericValue(formData, 'location_longitude'),
+      geocode_status: geocodeStatusFromCoordinates(numericValue(formData, 'location_latitude'), numericValue(formData, 'location_longitude')),
+      geocode_source: numericValue(formData, 'location_latitude') !== null && numericValue(formData, 'location_longitude') !== null ? 'manual' : null,
+      geocoded_at: numericValue(formData, 'location_latitude') !== null && numericValue(formData, 'location_longitude') !== null ? new Date().toISOString() : null,
       custom_fields: customFieldsFromForm(formData),
       created_by: auth.userId,
       updated_by: auth.userId,
@@ -1520,6 +1538,12 @@ export async function updateTaskAction(formData: FormData) {
       estimated_duration_minutes: durationMinutesFromForm(formData),
       sla_due_at: value(formData, 'sla_due_at'),
       recurrence_rule: value(formData, 'recurrence_rule'),
+      location_label: value(formData, 'location_label'),
+      location_latitude: numericValue(formData, 'location_latitude'),
+      location_longitude: numericValue(formData, 'location_longitude'),
+      geocode_status: geocodeStatusFromCoordinates(numericValue(formData, 'location_latitude'), numericValue(formData, 'location_longitude')),
+      geocode_source: numericValue(formData, 'location_latitude') !== null && numericValue(formData, 'location_longitude') !== null ? 'manual' : null,
+      geocoded_at: numericValue(formData, 'location_latitude') !== null && numericValue(formData, 'location_longitude') !== null ? new Date().toISOString() : null,
       custom_fields: customFieldsFromForm(formData),
       updated_by: auth.userId,
     })

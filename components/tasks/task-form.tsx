@@ -129,6 +129,17 @@ export function TaskForm({ action, task, taskTypes, entities, teams, staff, work
         <Field label="Arbetsorder"><select name="work_order_id" defaultValue={task?.work_order_id ?? ''} className={selectClassName}><option value="">Ingen arbetsorder</option>{workOrders.map((order) => <option key={order.id} value={order.id}>{order.title ?? order.name}</option>)}</select></Field>
       </div>
 
+      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-950">Kart- och routingunderlag</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Koordinater används av operationskartan, restidsberäkning och kommande VROOM-optimering. Om uppdraget saknar koordinater försöker systemet använda objektets huvudadress.</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <Field label="Platslabel"><input name="location_label" defaultValue={task?.location_label ?? ''} className={inputClassName} placeholder="Ex. Kundens entré, lastkaj, port A" /></Field>
+          <Field label="Latitud"><input name="location_latitude" type="number" step="0.0000001" defaultValue={task?.location_latitude ?? ''} className={inputClassName} placeholder="55.60498" /></Field>
+          <Field label="Longitud"><input name="location_longitude" type="number" step="0.0000001" defaultValue={task?.location_longitude ?? ''} className={inputClassName} placeholder="13.00382" /></Field>
+        </div>
+      </div>
+
+
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Tilldelat team"><select name="assigned_team_id" defaultValue={task?.assigned_team_id ?? ''} className={selectClassName}><option value="">Ej tilldelat team</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></Field>
         <Field label="Tilldelad person"><select name="assigned_staff_id" defaultValue={task?.assigned_staff_id ?? ''} className={selectClassName}><option value="">Ej tilldelad person</option>{staff.map((person) => <option key={person.id} value={person.id}>{person.full_name ?? person.name}</option>)}</select></Field>
