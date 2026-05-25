@@ -1,6 +1,7 @@
 import { conflictLevel } from '@/lib/planning/conflict-detection'
 import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { summarizeCandidateEvaluation } from '@/lib/planning/risk'
 import { evaluateResourceFit, mergeEvaluationWithResourceFit, resourceRequirementsForTask, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import type {
   CandidateEvaluation,
@@ -329,7 +330,8 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
           teamId: person.primary_team_id ?? null,
         })
         const evaluation = mergeEvaluationWithResourceFit(baseEvaluation, resourceFit)
-        return { person, shift, evaluation, resourceFit }
+        const riskSummary = summarizeCandidateEvaluation(evaluation)
+        return { person, shift, evaluation, resourceFit, riskSummary }
       }).sort((a, b) => b.evaluation.score - a.evaluation.score)
 
       const best = candidates.find((candidate) => candidate.evaluation.eligible) ?? candidates[0] ?? null
@@ -354,6 +356,11 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
             planned_end_at: plannedEndAt,
             score: candidate.evaluation.score,
             eligible: candidate.evaluation.eligible,
+            risk_score: candidate.riskSummary.riskScore,
+            blocking_count: candidate.riskSummary.blockingCount,
+            warning_count: candidate.riskSummary.warningCount,
+            info_count: candidate.riskSummary.infoCount,
+            rule_summary: candidate.riskSummary as any,
             rejection_reason: candidate.evaluation.rejectionReason,
             explanation: candidate.evaluation.explanation,
             source_type: 'planning_run',
@@ -361,7 +368,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
             project_id: input.projectId ?? null,
             project_phase_id: input.projectPhaseId ?? null,
             project_work_item_id: input.projectWorkItemId ?? null,
-            metadata: { ...summarizeEvaluation(candidate.evaluation), rank: candidateRowIds.length + 1, selectedForDraft: candidate === best, resourceFit: candidate.resourceFit.summary },
+            metadata: { ...summarizeEvaluation(candidate.evaluation), rank: candidateRowIds.length + 1, selectedForDraft: candidate === best, resourceFit: candidate.resourceFit.summary, riskSummary: candidate.riskSummary },
           })
           .select('id')
           .single()
@@ -387,6 +394,8 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
         }
       }
 
+      const draftRiskSummary = evaluation ? summarizeCandidateEvaluation(evaluation) : { riskScore: 100, blockingCount: 1, warningCount: 0, infoCount: 0, conflictCount: 1, canPublishWithoutOverride: false, requiresOverride: true, highestSeverity: 'hard', summary: 'Inga kandidater kunde hittas' }
+
       const { data: item, error: itemError } = await supabaseAdmin
         .from('planning_draft_items')
         .insert({
@@ -404,6 +413,11 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
           score: evaluation?.score ?? 0,
           eligible: evaluation?.eligible ?? false,
           conflict_level: evaluation ? conflictLevel(evaluation.conflicts) : 'hard',
+          risk_score: draftRiskSummary.riskScore,
+          blocking_count: draftRiskSummary.blockingCount,
+          warning_count: draftRiskSummary.warningCount,
+          info_count: draftRiskSummary.infoCount,
+          rule_summary: draftRiskSummary as any,
           rejection_reason: evaluation?.rejectionReason ?? 'Inga kandidater kunde hittas.',
           explanation: evaluation?.explanation ?? 'Inga kandidater kunde hittas för uppdraget.',
           source_type: 'planning_run',
@@ -411,7 +425,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
           project_id: input.projectId ?? null,
           project_phase_id: input.projectPhaseId ?? null,
           project_work_item_id: input.projectWorkItemId ?? null,
-          metadata: evaluation ? { ...summarizeEvaluation(evaluation), resourceFit: selectedResourceFit?.summary ?? null } : { eligible: false, reason: 'no_candidates' },
+          metadata: evaluation ? { ...summarizeEvaluation(evaluation), resourceFit: selectedResourceFit?.summary ?? null, riskSummary: draftRiskSummary } : { eligible: false, reason: 'no_candidates', riskSummary: draftRiskSummary },
           sort_order: itemCount + 1,
         })
         .select('id')
@@ -481,7 +495,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
           severity: conflict.severity,
           status: 'open',
           message: conflict.message,
-          details: conflict.details ?? {},
+          details: { ...(conflict.details ?? {}), riskSummary: draftRiskSummary },
           project_id: input.projectId ?? null,
           project_phase_id: input.projectPhaseId ?? null,
           project_work_item_id: input.projectWorkItemId ?? null,

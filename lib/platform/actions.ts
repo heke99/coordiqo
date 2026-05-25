@@ -7,6 +7,7 @@ import { assertCompanyPermission, assertPlatformAdminRole, COMPANY_ROLE_LABELS, 
 import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
 import { conflictLevel } from '@/lib/planning/conflict-detection'
+import { isBlockingSeverity, isWarningSeverity, overrideMetadata, summarizeCandidateEvaluation } from '@/lib/planning/risk'
 import { interpretAiPlanningPrompt, planningInputFromIntent } from '@/lib/planning/ai-assistant'
 import { evaluateCandidate } from '@/lib/planning/candidate-scoring'
 import { createPlanningRunWithDraft, recalculateShiftAssignmentCapacity } from '@/lib/planning/planning-engine'
@@ -2043,22 +2044,27 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
     plannedEndAt,
   })
 
-  const hardConflicts = evaluation.conflicts.filter((conflict) => ['hard', 'critical', 'blocked'].includes(conflict.severity))
-  const softConflicts = evaluation.conflicts.filter((conflict) => ['soft', 'warning'].includes(conflict.severity))
+  const riskSummary = summarizeCandidateEvaluation(evaluation)
+  const hardConflicts = evaluation.conflicts.filter((conflict) => isBlockingSeverity(conflict.severity))
+  const softConflicts = evaluation.conflicts.filter((conflict) => isWarningSeverity(conflict.severity))
   const overrideSoft = value(formData, 'override_soft_conflicts') === 'true'
+  const overrideBlocking = value(formData, 'override_blocking_conflicts') === 'true'
   const overrideReason = value(formData, 'override_reason')
+  const overrideApproved = (hardConflicts.length > 0 && overrideBlocking) || (hardConflicts.length === 0 && softConflicts.length > 0 && overrideSoft)
 
-  if (hardConflicts.length > 0) {
-    throw new Error(`Tilldelningen stoppades av hårda konflikter: ${hardConflicts.slice(0, 3).map((conflict) => conflict.message).join(' ')}`)
+  if (hardConflicts.length > 0 && !overrideBlocking) {
+    throw new Error(`Tilldelningen stoppades av blockerande konflikter: ${hardConflicts.slice(0, 3).map((conflict) => conflict.message).join(' ')} Välj override och ange orsak om planerare/admin vill planera ändå.`)
   }
 
-  if (softConflicts.length > 0 && !overrideSoft) {
-    throw new Error(`Mjuka konflikter behöver granskas eller override: ${softConflicts.slice(0, 3).map((conflict) => conflict.message).join(' ')}`)
+  if (softConflicts.length > 0 && hardConflicts.length === 0 && !overrideSoft) {
+    throw new Error(`Varningar behöver granskas eller override: ${softConflicts.slice(0, 3).map((conflict) => conflict.message).join(' ')}`)
   }
 
-  if (softConflicts.length > 0 && overrideSoft && !overrideReason) {
-    throw new Error('Override reason krävs när mjuka konflikter ignoreras.')
+  if (overrideApproved && !overrideReason) {
+    throw new Error('Override-orsak krävs när konflikter ska överskridas.')
   }
+
+  const approvedAt = overrideApproved ? new Date().toISOString() : null
 
   const { data: assignment, error } = await supabaseAdmin
     .from('task_assignments')
@@ -2074,10 +2080,22 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
       source_type: 'manual',
       is_locked: value(formData, 'is_locked') === 'true',
       locked_reason: value(formData, 'locked_reason'),
-      override_reason: overrideReason,
-      conflict_override_approved: overrideSoft,
-      explanation: evaluation.explanation,
-      metadata: { score: evaluation.score, conflictLevel: conflictLevel(evaluation.conflicts), source: 'manual_assignment_form' },
+      override_reason: overrideApproved ? overrideReason : null,
+      conflict_override_approved: overrideApproved,
+      override_approved_by: overrideApproved ? auth.userId : null,
+      override_approved_at: approvedAt,
+      risk_score: riskSummary.riskScore,
+      blocking_count: riskSummary.blockingCount,
+      warning_count: riskSummary.warningCount,
+      info_count: riskSummary.infoCount,
+      explanation: overrideApproved ? `${evaluation.explanation} Override godkänd: ${overrideReason}` : evaluation.explanation,
+      metadata: {
+        score: evaluation.score,
+        conflictLevel: conflictLevel(evaluation.conflicts),
+        source: 'manual_assignment_form',
+        riskSummary,
+        override: overrideApproved ? overrideMetadata({ reason: overrideReason!, actorUserId: auth.userId, approvedAt: approvedAt!, conflictSummary: riskSummary }) : null,
+      },
       created_by: auth.userId,
       updated_by: auth.userId,
     })
@@ -2109,11 +2127,11 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
       shift_id: shiftId,
       conflict_type: conflict.conflictType,
       severity: conflict.severity,
-      status: ['soft', 'warning'].includes(conflict.severity) && overrideSoft ? 'overridden' : 'open',
+      status: overrideApproved ? 'overridden' : 'open',
       message: conflict.message,
-      details: conflict.details ?? {},
-      resolved_by: ['soft', 'warning'].includes(conflict.severity) && overrideSoft ? auth.userId : null,
-      resolved_at: ['soft', 'warning'].includes(conflict.severity) && overrideSoft ? new Date().toISOString() : null,
+      details: { ...(conflict.details ?? {}), riskSummary, overrideReason: overrideApproved ? overrideReason : null },
+      resolved_by: overrideApproved ? auth.userId : null,
+      resolved_at: overrideApproved ? approvedAt : null,
     })))
     if (conflictError) throw new Error(conflictError.message)
   }
@@ -2135,7 +2153,7 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
 
   if (shift?.id) await recalculateShiftAssignmentCapacity(auth.membership!.companyId, shift.id)
 
-  await audit(auth.membership!.companyId, auth.userId, 'create', 'task_assignment', assignment.id, { taskId, staffProfileId, teamId, shiftId, score: evaluation.score, softOverride: overrideSoft })
+  await audit(auth.membership!.companyId, auth.userId, 'create', 'task_assignment', assignment.id, { taskId, staffProfileId, teamId, shiftId, score: evaluation.score, riskSummary, overrideApproved, overrideReason })
   revalidatePath('/tasks')
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath('/planning')
@@ -2174,6 +2192,7 @@ async function replaceDraftItemConflicts(params: {
     .eq('status', 'open')
 
   const level = conflictLevel(evaluation.conflicts)
+  const riskSummary = summarizeCandidateEvaluation(evaluation)
   const eligible = !['hard', 'critical', 'blocked'].includes(level)
 
   if (evaluation.conflicts.length > 0) {
@@ -2189,7 +2208,7 @@ async function replaceDraftItemConflicts(params: {
       severity: conflict.severity,
       status: 'open',
       message: conflict.message,
-      details: { ...(conflict.details ?? {}), recalculatedBy: params.actorUserId, recalculatedAt: new Date().toISOString() },
+      details: { ...(conflict.details ?? {}), recalculatedBy: params.actorUserId, recalculatedAt: new Date().toISOString(), riskSummary },
       project_id: (task as any)?.project_id ?? null,
       project_phase_id: (task as any)?.project_phase_id ?? null,
       project_work_item_id: (task as any)?.project_work_item_id ?? null,
@@ -2206,6 +2225,7 @@ async function replaceDraftItemConflicts(params: {
     eligible,
     rejectionReason: eligible ? null : evaluation.rejectionReason,
     resourceFit,
+    riskSummary,
   }
 }
 
@@ -2335,6 +2355,7 @@ export async function publishPlanningDraftAction(formData: FormData) {
     draftId,
     selectedDraftItemIds: selected.length ? selected : undefined,
     lockAssignments: value(formData, 'lock_assignments') === 'true',
+    publishOverriddenConflicts: value(formData, 'publish_overridden_conflicts') === 'true',
   })
 
   await audit(auth.membership!.companyId, auth.userId, 'publish', 'planning_draft', draftId, result)
@@ -2382,6 +2403,35 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
     plannedEndAt,
   })
 
+  const overrideConflicts = value(formData, 'override_conflicts') === 'true'
+  const overrideReason = value(formData, 'override_reason')
+  const overrideApproved = overrideConflicts && recalculated.riskSummary.requiresOverride
+  if (overrideApproved && !overrideReason) throw new Error('Override-orsak krävs när blockerande regler eller varningar ska överskridas.')
+  const overrideApprovedAt = overrideApproved ? new Date().toISOString() : null
+  if (overrideApproved) {
+    await supabaseAdmin
+      .from('planning_conflicts')
+      .update({
+        status: 'overridden',
+        resolved_by: auth.userId,
+        resolved_at: overrideApprovedAt,
+        details: { overrideReason, overriddenFromDraftItem: itemId, riskSummary: recalculated.riskSummary },
+      })
+      .eq('company_id', auth.membership!.companyId)
+      .eq('planning_draft_item_id', itemId)
+      .eq('status', 'open')
+
+    await supabaseAdmin.from('planning_conflict_resolutions').insert({
+      company_id: auth.membership!.companyId,
+      conflict_id: null,
+      planning_draft_item_id: itemId,
+      resolution_type: 'override',
+      reason: overrideReason,
+      metadata: { scope: 'draft_item', riskSummary: recalculated.riskSummary },
+      resolved_by: auth.userId,
+    })
+  }
+
   const { error } = await supabaseAdmin
     .from('planning_draft_items')
     .update({
@@ -2392,13 +2442,28 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
       planned_end_at: plannedEndAt,
       status: value(formData, 'status') ?? (currentItem as any).status ?? 'proposed',
       score: recalculated.evaluation.score,
-      eligible: recalculated.eligible,
-      conflict_level: recalculated.conflictLevel,
-      rejection_reason: recalculated.rejectionReason,
+      eligible: recalculated.eligible || overrideApproved,
+      conflict_level: overrideApproved ? recalculated.conflictLevel : recalculated.conflictLevel,
+      rejection_reason: overrideApproved ? null : recalculated.rejectionReason,
+      conflict_override_approved: overrideApproved,
+      override_reason: overrideApproved ? overrideReason : null,
+      override_approved_by: overrideApproved ? auth.userId : null,
+      override_approved_at: overrideApprovedAt,
+      risk_score: recalculated.riskSummary.riskScore,
+      blocking_count: recalculated.riskSummary.blockingCount,
+      warning_count: recalculated.riskSummary.warningCount,
+      info_count: recalculated.riskSummary.infoCount,
       is_locked: value(formData, 'is_locked') ? value(formData, 'is_locked') === 'true' : Boolean((currentItem as any).is_locked),
       locked_reason: value(formData, 'locked_reason') ?? (currentItem as any).locked_reason ?? null,
       explanation: value(formData, 'explanation') ?? recalculated.evaluation.explanation,
-      metadata: { manual_edit: true, edited_at: new Date().toISOString(), recalculated: true, scoreBreakdown: recalculated.evaluation.breakdown },
+      metadata: {
+        manual_edit: true,
+        edited_at: new Date().toISOString(),
+        recalculated: true,
+        scoreBreakdown: recalculated.evaluation.breakdown,
+        riskSummary: recalculated.riskSummary,
+        override: overrideApproved ? overrideMetadata({ reason: overrideReason!, actorUserId: auth.userId, approvedAt: overrideApprovedAt!, conflictSummary: recalculated.riskSummary }) : null,
+      },
     })
     .eq('id', itemId)
     .eq('planning_draft_id', draftId)
@@ -2419,7 +2484,7 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
     plannedEndAt,
     resourceFit: recalculated.resourceFit,
   })
-  await audit(auth.membership!.companyId, auth.userId, 'update', 'planning_draft_item', itemId, { draftId, score: recalculated.evaluation.score, conflictLevel: recalculated.conflictLevel })
+  await audit(auth.membership!.companyId, auth.userId, 'update', 'planning_draft_item', itemId, { draftId, score: recalculated.evaluation.score, conflictLevel: recalculated.conflictLevel, riskSummary: recalculated.riskSummary, overrideApproved, overrideReason })
   revalidatePath('/planning')
   revalidatePath('/planning/runs')
 }

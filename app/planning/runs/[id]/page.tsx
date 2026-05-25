@@ -34,8 +34,8 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
 
   if (draft) {
     const [itemsResult, candidatesResult, conflictsResult, publicationsResult, resourceAssignmentsResult] = await Promise.all([
-      supabaseAdmin.from('planning_draft_items').select('id, task_id, candidate_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, score, eligible, conflict_level, rejection_reason, explanation, is_locked, metadata, tasks(title, priority, status), staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('sort_order'),
-      supabaseAdmin.from('assignment_candidates').select('id, task_id, staff_profile_id, team_id, shift_id, score, eligible, rejection_reason, explanation, metadata, staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('score', { ascending: false }).limit(150),
+      supabaseAdmin.from('planning_draft_items').select('id, task_id, candidate_id, staff_profile_id, team_id, shift_id, planned_start_at, planned_end_at, status, score, eligible, conflict_level, risk_score, blocking_count, warning_count, info_count, conflict_override_approved, override_reason, rejection_reason, explanation, is_locked, metadata, tasks(title, priority, status), staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('sort_order'),
+      supabaseAdmin.from('assignment_candidates').select('id, task_id, staff_profile_id, team_id, shift_id, score, eligible, risk_score, blocking_count, warning_count, info_count, rejection_reason, explanation, metadata, staff_profiles(full_name), teams(name), shifts(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('score', { ascending: false }).limit(150),
       supabaseAdmin.from('planning_conflicts').select('id, planning_draft_item_id, task_id, conflict_type, severity, status, message, created_at, staff_profiles(full_name), tasks(title)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
       supabaseAdmin.from('planning_publications').select('id, status, published_assignment_ids, skipped_count, created_at').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at', { ascending: false }),
       supabaseAdmin.from('planning_resource_assignments').select('id, planning_draft_item_id, task_id, resource_asset_id, actual_resource_asset_id, resource_type_id, status, note, resource_assets(name), resource_types(name)').eq('company_id', auth.membership.companyId).eq('planning_draft_id', draft.id).is('archived_at', null).order('created_at'),
@@ -122,10 +122,11 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold text-slate-950">{draft.title}</h2>
-                    <p className="mt-1 text-sm text-slate-500">Välj rader och publicera till riktiga task_assignments. Rader med hård konflikt hoppas över.</p>
+                    <p className="mt-1 text-sm text-slate-500">Välj rader och publicera till riktiga task_assignments. Rader med blockerande konflikter kräver explicit override innan publicering.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <select name="lock_assignments" defaultValue="false" className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800"><option value="false">Lås inte</option><option value="true">Lås publicerade</option></select>
+                    <select name="publish_overridden_conflicts" defaultValue="false" className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-900"><option value="false">Publicera inte overrides</option><option value="true">Tillåt godkända overrides</option></select>
                     <button className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Publicera valda</button>
                   </div>
                 </div>
@@ -145,7 +146,8 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                     const itemConflicts = conflictsByItem.get(item.id) ?? []
                     const itemResources = resourcesByItem.get(item.id) ?? []
                     const itemCandidates = candidatesByTask.get(item.task_id) ?? []
-                    const canPublish = item.eligible && item.conflict_level !== 'hard' && item.conflict_level !== 'blocked' && item.status !== 'published'
+                    const isBlocking = ['hard', 'critical', 'blocked'].includes(item.conflict_level)
+                    const canPublish = item.status !== 'published' && (item.eligible || item.conflict_override_approved) && (!isBlocking || item.conflict_override_approved)
                     return (
                       <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -158,10 +160,10 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                               {itemResources.length ? <div className="mt-3 flex flex-wrap gap-2">{itemResources.map((assignment: any) => <span key={assignment.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{assignment.resource_assets?.name ?? assignment.resource_types?.name ?? assignment.note ?? 'Resurs'} · {assignment.status}</span>)}</div> : null}
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-2"><StatusBadge status={item.status} /><StatusBadge status={item.conflict_level} tone={['hard', 'blocked'].includes(item.conflict_level) ? 'danger' : item.conflict_level === 'none' ? 'success' : 'warning'} /><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">score {item.score}</span></div>
+                          <div className="flex flex-wrap gap-2"><StatusBadge status={item.status} /><StatusBadge status={item.conflict_level} tone={['hard', 'blocked'].includes(item.conflict_level) ? 'danger' : item.conflict_level === 'none' ? 'success' : 'warning'} /><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">score {item.score}</span><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">risk {item.risk_score ?? 0}</span>{item.conflict_override_approved ? <StatusBadge status="override" tone="warning" /> : null}</div>
                         </div>
 
-                        {itemConflicts.length ? <div className="mt-4 space-y-2">{itemConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">{conflict.message}</div>)}</div> : null}
+                        {itemConflicts.length ? <div className="mt-4 space-y-2">{itemConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"><span className="font-semibold">{conflict.severity}</span> · {conflict.message} <span className="text-xs text-amber-700">({conflict.status})</span></div>)}</div> : null}
 
                         {itemCandidates.length ? <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-slate-800">Visa kandidater och score</summary><div className="mt-3 space-y-3">{itemCandidates.slice(0, 5).map((candidate: any) => {
                           const parts = scoreBreakdownByCandidate.get(candidate.id) ?? []
@@ -208,6 +210,14 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                   <Field label="Förklaring"><input name="explanation" className={inputClassName} /></Field>
                   <Field label="Lås rad"><select name="is_locked" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field>
                   <Field label="Låsningsorsak"><input name="locked_reason" className={inputClassName} /></Field>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-950">Override av blockerande regler/varningar</p>
+                    <p className="mt-1 text-xs text-amber-800">Använd bara när planerare/admin medvetet vill planera trots blockerande regler. Orsaken sparas i historik och audit.</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[220px_1fr]">
+                      <Field label="Override"><select name="override_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, planera ändå</option></select></Field>
+                      <Field label="Override-orsak"><input name="override_reason" className={inputClassName} placeholder="Ex. akut kundbehov, känd felregistrering, adminbeslut" /></Field>
+                    </div>
+                  </div>
                   <button className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800">Spara draft-rad</button>
                 </form>
               </section>

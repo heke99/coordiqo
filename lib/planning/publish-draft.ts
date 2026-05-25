@@ -7,6 +7,7 @@ export type PublishPlanningDraftInput = {
   draftId: string
   selectedDraftItemIds?: string[]
   lockAssignments?: boolean
+  publishOverriddenConflicts?: boolean
 }
 
 export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
@@ -36,7 +37,13 @@ export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
   const { data: items, error: itemError } = await itemQuery
   if (itemError) throw new Error(itemError.message)
 
-  const publishableItems = (items ?? []).filter((item: any) => item.eligible && (item.staff_profile_id || item.team_id) && item.planned_start_at && item.planned_end_at && item.conflict_level !== 'hard' && item.conflict_level !== 'blocked')
+  const publishableItems = (items ?? []).filter((item: any) => {
+    const hasTargetAndTime = (item.staff_profile_id || item.team_id) && item.planned_start_at && item.planned_end_at
+    if (!hasTargetAndTime) return false
+    const isBlocking = ['hard', 'critical', 'blocked'].includes(item.conflict_level)
+    if (!isBlocking) return item.eligible
+    return Boolean(input.publishOverriddenConflicts && item.conflict_override_approved && item.override_reason)
+  })
   const skippedCount = (items ?? []).length - publishableItems.length
   const assignmentIds: string[] = []
   const touchedShiftIds = new Set<string>()
@@ -63,6 +70,14 @@ export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
         project_work_item_id: item.project_work_item_id ?? null,
         is_locked: input.lockAssignments ?? false,
         locked_reason: input.lockAssignments ? 'Låst vid publicering av planeringsutkast.' : null,
+        override_reason: item.conflict_override_approved ? item.override_reason : null,
+        conflict_override_approved: Boolean(item.conflict_override_approved),
+        override_approved_by: item.override_approved_by ?? null,
+        override_approved_at: item.override_approved_at ?? null,
+        risk_score: item.risk_score ?? null,
+        blocking_count: item.blocking_count ?? 0,
+        warning_count: item.warning_count ?? 0,
+        info_count: item.info_count ?? 0,
         explanation: item.explanation,
         metadata: item.metadata ?? {},
         created_by: input.actorUserId,
@@ -97,6 +112,19 @@ export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
       .eq('planning_draft_item_id', item.id)
       .is('archived_at', null)
 
+    if (item.conflict_override_approved) {
+      await supabaseAdmin
+        .from('planning_conflicts')
+        .update({
+          status: 'overridden',
+          resolved_by: item.override_approved_by ?? input.actorUserId,
+          resolved_at: item.override_approved_at ?? new Date().toISOString(),
+        })
+        .eq('company_id', input.companyId)
+        .eq('planning_draft_item_id', item.id)
+        .eq('status', 'open')
+    }
+
     await supabaseAdmin
       .from('tasks')
       .update({
@@ -127,7 +155,7 @@ export async function publishPlanningDraft(input: PublishPlanningDraftInput) {
       selected_draft_item_ids: (publishableItems as any[]).map((item) => item.id),
       published_assignment_ids: assignmentIds,
       skipped_count: skippedCount,
-      summary: { published: assignmentIds.length, skipped: skippedCount },
+      summary: { published: assignmentIds.length, skipped: skippedCount, publishOverriddenConflicts: Boolean(input.publishOverriddenConflicts) },
       published_by: input.actorUserId,
     })
     .select('id')

@@ -66,7 +66,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             </form>
           </section>
 
-          <FormCard title="Manuell tilldelning" description="Välj personal, team, pass och planerad tid. Hårda konflikter stoppar tilldelningen. Mjuka konflikter kan override:as med orsak.">
+          <FormCard title="Manuell tilldelning" description="Välj personal, team, pass och planerad tid. Blockerande konflikter stoppar normalt tilldelningen, men planerare/admin kan överskrida med tydlig orsak. Alla overrides audit-loggas.">
             <form action={createManualTaskAssignmentAction} className="grid gap-4">
               <input type="hidden" name="task_id" value={task.id} />
               <div className="grid gap-4 md:grid-cols-2">
@@ -81,9 +81,10 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
               <div className="grid gap-4 md:grid-cols-3">
                 <Field label="Status"><select name="status" defaultValue="assigned" className={selectClassName}><option value="assigned">Tilldelad</option><option value="confirmed">Bekräftad</option><option value="draft">Utkast</option></select></Field>
                 <Field label="Lås tilldelning"><select name="is_locked" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field>
-                <Field label="Override mjuka konflikter"><select name="override_soft_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field>
+                <Field label="Override varningar"><select name="override_soft_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, planera ändå</option></select></Field>
               </div>
-              <Field label="Override/låsningsorsak"><textarea name="override_reason" className={textareaClassName} placeholder="Krävs om mjuka konflikter ska override:as." /></Field>
+              <Field label="Override blockerande regler"><select name="override_blocking_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, admin/planerare tar ansvar</option></select></Field>
+              <Field label="Override/låsningsorsak"><textarea name="override_reason" className={textareaClassName} placeholder="Krävs om varningar eller blockerande regler ska överskridas. Beskriv varför planeringen ändå ska göras." /></Field>
               <Field label="Låsningsorsak"><input name="locked_reason" className={inputClassName} placeholder="Ex. kundkrav, nyckelperson, kontinuitet" /></Field>
               <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Kontrollera och tilldela</button>
             </form>
