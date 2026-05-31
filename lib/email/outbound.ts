@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type SendEmailInput = {
-  companyId: string
+  companyId: string | null
   to: string
   subject: string
   bodyText: string

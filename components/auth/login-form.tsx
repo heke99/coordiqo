@@ -5,8 +5,6 @@ import { useMemo, useState } from 'react'
 
 import { createClient } from '@/lib/supabase/client'
 
-type AuthMode = 'signin' | 'signup'
-
 function getFriendlyError(message: string) {
   if (message.toLowerCase().includes('invalid login credentials')) {
     return 'Fel e-post eller lösenord.'
@@ -18,8 +16,6 @@ function getFriendlyError(message: string) {
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [mode, setMode] = useState<AuthMode>('signin')
-  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -46,31 +42,7 @@ export function LoginForm() {
     setNotice(null)
 
     const supabase = createClient()
-
-    if (mode === 'signin') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-
-      setLoading(false)
-
-      if (error) {
-        setError(getFriendlyError(error.message))
-        return
-      }
-
-      router.push('/')
-      router.refresh()
-      return
-    }
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
-    })
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     setLoading(false)
 
@@ -79,13 +51,7 @@ export function LoginForm() {
       return
     }
 
-    if (!data.session) {
-      setNotice('Kontot skapades. Bekräfta din e-post om Supabase kräver det och logga sedan in.')
-      setMode('signin')
-      return
-    }
-
-    router.push('/setup')
+    router.push('/')
     router.refresh()
   }
 
@@ -133,38 +99,9 @@ export function LoginForm() {
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-slate-500">Välkommen till Coordiqo</p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">
-                {mode === 'signin' ? 'Logga in' : 'Skapa konto'}
-              </h2>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">Logga in</h2>
             </div>
-            <div className="rounded-full bg-slate-100 p-1 text-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signin')
-                  setError(null)
-                  setNotice(null)
-                }}
-                className={`rounded-full px-3 py-2 font-medium transition ${
-                  mode === 'signin' ? 'bg-slate-900 text-white' : 'text-slate-600'
-                }`}
-              >
-                Logga in
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signup')
-                  setError(null)
-                  setNotice(null)
-                }}
-                className={`rounded-full px-3 py-2 font-medium transition ${
-                  mode === 'signup' ? 'bg-slate-900 text-white' : 'text-slate-600'
-                }`}
-              >
-                Skapa konto
-              </button>
-            </div>
+            <a href="/book-demo" className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Request access</a>
           </div>
 
           {(error || authMessage) && (
@@ -180,20 +117,6 @@ export function LoginForm() {
           )}
 
           <form className="space-y-4" onSubmit={onSubmit}>
-            {mode === 'signup' && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Fullständigt namn</label>
-                <input
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Till exempel Hekmat Hourani"
-                  required={mode === 'signup'}
-                />
-              </div>
-            )}
-
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">E-post</label>
               <input
@@ -223,7 +146,7 @@ export function LoginForm() {
               disabled={loading}
               className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? 'Arbetar...' : mode === 'signin' ? 'Logga in' : 'Skapa konto'}
+              {loading ? 'Arbetar...' : 'Logga in'}
             </button>
           </form>
         </section>

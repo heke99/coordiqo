@@ -49,6 +49,7 @@ const settingsNav = [
 
 const platformNav = [
   { href: '/admin', labelKey: 'nav.admin' },
+  { href: '/admin/demo-requests', labelKey: 'nav.demoRequests' },
   { href: '/admin/companies', labelKey: 'nav.companies' },
   { href: '/admin/access-requests', labelKey: 'nav.accessRequests' },
 ]
