@@ -34,8 +34,8 @@ export default async function ChatPage() {
     supabaseAdmin.from('chat_channels').select('id, name, description, channel_type, created_at').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(40),
     supabaseAdmin.from('chat_messages').select('id, chat_channel_id, body, importance, created_at, profiles(full_name, email)').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(80),
   ])
-  const channelRows = (channels ?? []) as ChannelRow[]
-  const messageRows = (messages ?? []) as MessageRow[]
+  const channelRows = (channels ?? []) as unknown as ChannelRow[]
+  const messageRows = (messages ?? []) as unknown as MessageRow[]
   const activeChannel = channelRows[0] ?? null
   const activeMessages = activeChannel ? messageRows.filter((message) => message.chat_channel_id === activeChannel.id) : []
 

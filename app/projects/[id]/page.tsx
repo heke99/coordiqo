@@ -86,6 +86,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const today = new Date().toISOString().slice(0, 10)
   const latestCalculation = (calculationRuns ?? [])[0] as { id: string; version: number; status: string; currency: string; estimated_minutes: number; internal_cost: number; recommended_price: number; margin_percent: number; risk_markup_percent: number; created_at: string } | undefined
   const projectActuals = actuals as { id: string; status: string; actual_minutes: number; actual_cost: number; actual_billing_amount: number; actual_margin_amount: number; deadline_status: string | null; customer_satisfaction: number | null } | null
+  const workItemRows = (workItems ?? []) as unknown as Array<{ id: string; title: string; quantity: number | null; unit_label: string | null; estimated_effort_minutes: number | null; status: string; project_phases: { name: string } | null; tasks: { title: string; status: string } | null }>
+  const taskRows = (tasks ?? []) as unknown as Array<{ id: string; title: string; status: string; estimated_duration_minutes: number | null; staff_profiles: { full_name: string } | null; teams: { name: string } | null }>
+  const runRows = (runs ?? []) as Array<{ id: string; name: string; status: string; date_from: string | null; date_to: string | null }>
+  const phaseRows = (phases ?? []) as Array<{ id: string; name: string; status: string; estimated_effort_minutes: number | null }>
 
   return (
     <AppShell
@@ -127,7 +131,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Arbetsmoment</h2>
             <div className="mt-4 space-y-3">
-              {workItems?.length ? workItems.map((item: any) => (
+              {workItemRows.length ? workItemRows.map((item) => (
                 <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -145,7 +149,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Genererade uppdrag</h2>
             <div className="mt-4 space-y-3">
-              {tasks?.length ? tasks.map((task: any) => (
+              {taskRows.length ? taskRows.map((task) => (
                 <Link key={task.id} href={`/tasks/${task.id}`} className="block rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -240,7 +244,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Planeringskörningar</h2>
             <div className="mt-4 space-y-3">
-              {runs?.length ? runs.map((run: any) => (
+              {runRows.length ? runRows.map((run) => (
                 <Link key={run.id} href={`/planning/runs/${run.id}`} className="block rounded-2xl border border-slate-200 bg-white p-4 text-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -257,7 +261,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Faser</h2>
             <div className="mt-4 space-y-2">
-              {phases?.length ? phases.map((phase: any) => <div key={phase.id} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm"><b>{phase.name}</b><span className="block text-xs text-slate-500">{hours(phase.estimated_effort_minutes)} h · {phase.status}</span></div>) : <p className="text-sm text-slate-600">Inga faser.</p>}
+              {phaseRows.length ? phaseRows.map((phase) => <div key={phase.id} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm"><b>{phase.name}</b><span className="block text-xs text-slate-500">{hours(phase.estimated_effort_minutes)} h · {phase.status}</span></div>) : <p className="text-sm text-slate-600">Inga faser.</p>}
             </div>
           </section>
         </aside>

@@ -51,8 +51,8 @@ export default async function OptimizationPage() {
   ])
 
   const runRows = (runs ?? []) as OptimizationRunRow[]
-  const itemRows = (items ?? []) as OptimizationItemRow[]
-  const unassignedRows = (unassigned ?? []) as UnassignedRow[]
+  const itemRows = (items ?? []) as unknown as OptimizationItemRow[]
+  const unassignedRows = (unassigned ?? []) as unknown as UnassignedRow[]
   const latestRun = runRows[0]
   const latestItems = latestRun ? itemRows.filter((item) => item.optimization_run_id === latestRun.id) : []
 

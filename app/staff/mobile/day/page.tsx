@@ -94,7 +94,7 @@ export default async function MobileDayPage() {
   const resourceRows = (resources ?? []) as ResourceOption[]
   const staffRows = (staff ?? []) as StaffOption[]
   const teamRows = (teams ?? []) as TeamOption[]
-  const assignmentRows = (assignments ?? []) as AssignmentRow[]
+  const assignmentRows = (assignments ?? []) as unknown as AssignmentRow[]
   const resourceAssignmentRows = (resourceAssignments ?? []) as ResourceAssignment[]
   const resourceById = new Map(resourceRows.map((row) => [row.id, row.name]))
   const staffById = new Map(staffRows.map((row) => [row.id, row.full_name]))
@@ -117,7 +117,7 @@ export default async function MobileDayPage() {
       <div className="space-y-4">
         {assignmentRows.length ? assignmentRows.map((assignment) => {
           const taskResources = resourcesByTask.get(assignment.task_id) ?? []
-          const responsible = staffById.get(assignment.staff_profile_id) ?? teamById.get(assignment.team_id) ?? 'Ingen ansvarig'
+          const responsible = (assignment.staff_profile_id ? staffById.get(assignment.staff_profile_id) : null) ?? (assignment.team_id ? teamById.get(assignment.team_id) : null) ?? 'Ingen ansvarig'
           return (
             <section key={assignment.id} className="coordiqo-card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">

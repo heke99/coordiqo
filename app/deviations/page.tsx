@@ -33,7 +33,7 @@ export default async function DeviationsPage() {
     supabaseAdmin.from('tasks').select('id, title').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
     supabaseAdmin.from('projects').select('id, name').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(100),
   ])
-  const rows = (deviations ?? []) as DeviationRow[]
+  const rows = (deviations ?? []) as unknown as DeviationRow[]
 
   return (
     <AppShell
