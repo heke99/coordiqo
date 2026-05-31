@@ -35,38 +35,38 @@ const settingsSections = [
   },
   {
     href: '/settings/permissions',
-    title: 'Behörigheter och RBAC',
-    description: 'Hantera permission overrides per company-roll och säkerställ att rätt roll ser rätt ytor.',
+    title: 'Roller och behörigheter',
+    description: 'Hantera anpassade behörigheter per företagsroll och säkerställ att rätt roll ser rätt ytor.',
     status: 'ny',
   },
   {
     href: '/settings/invitations',
     title: 'Inbjudningar',
-    description: 'Skicka invites via email, skicka om länkar och avbryt felaktiga inbjudningar.',
+    description: 'Skicka inbjudningar via e-post, skicka om länkar och avbryt felaktiga inbjudningar.',
     status: 'ny',
   },
   {
     href: '/settings/health',
     title: 'Systemhälsa',
-    description: 'Readiness-check för bransch, presets, email, storage, maps, AI och grunddata.',
+    description: 'Systemkontroll för bransch, mallar, e-post, dokument, karta, AI och grunddata.',
     status: 'ny',
   },
   {
     href: '/settings/support',
     title: 'Supportläge',
-    description: 'Starta och avsluta audit-loggade supportsessioner med tydlig orsak.',
+    description: 'Starta och avsluta spårade supportsessioner med tydlig orsak.',
     status: 'ny',
   },
   {
     href: '/audit',
-    title: 'Auditlogg',
-    description: 'Spåra ändringar, overrides, invites, supportåtgärder och publiceringar.',
+    title: 'Ändringslogg',
+    description: 'Spåra ändringar, undantag, inbjudningar, supportåtgärder och publiceringar.',
     status: 'ny',
   },
   {
     href: '/notifications',
     title: 'Notiser',
-    description: 'Samlad vy för in-app notiser kopplade till drift, invites och bolagsbeslut.',
+    description: 'Samlad vy för notiser kopplade till drift, inbjudningar och bolagsbeslut.',
     status: 'ny',
   },
   {
@@ -166,9 +166,9 @@ export default async function SettingsPage() {
         </section>
 
         <EmptyState
-          eyebrow="Kommande företagsadmin"
-          title="Nästa nivå blir fler företagsinställningar"
-          description="Batch 1-ytorna är nu samlade här: behörigheter, inbjudningar, audit, systemhälsa, support och notiser. Nästa steg är att koppla fler integrationer och import/export när plattformen hårdas ytterligare."
+          eyebrow="Företagsinställningar"
+          title="Allt viktigt samlas här"
+          description="Här finns behörigheter, inbjudningar, ändringslogg, systemstatus, support och notiser. Fler integrationer och import/export kan kopplas på när bolaget behöver det."
         />
       </div>
     </AppShell>

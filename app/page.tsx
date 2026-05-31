@@ -15,7 +15,7 @@ const sections = [
   },
   {
     title: 'AI planner',
-    description: 'Langflow-powered decision support can summarize operations, classify messages, suggest deviations and help planners see risk faster.',
+    description: 'AI-based decision support can summarize operations, classify messages, suggest deviations and help planners see risk faster.',
   },
   {
     title: 'Resource tracking',
@@ -48,7 +48,7 @@ export default function HomePage() {
         <section className="coordiqo-card overflow-hidden p-7 sm:p-10 lg:p-14">
           <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
             <div>
-              <div className="coordiqo-badge coordiqo-badge--success">Sales-led onboarding</div>
+              <div className="coordiqo-badge coordiqo-badge--success">Guided onboarding</div>
               <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
                 Smart planning for staff, assignments and resources
               </h1>
@@ -84,7 +84,7 @@ export default function HomePage() {
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-2xl font-semibold tracking-tight">Ready to see Coordiqo?</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Request access and we will qualify your company, book a demo and help set up the right starting defaults.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Request access and we will qualify your company, book a guided walkthrough and help set up the right starting defaults.</p>
             </div>
             <Link href="/book-demo" className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950">Contact us</Link>
           </div>

@@ -111,7 +111,7 @@ export default async function AdminDemoRequestDetailPage({ params }: { params: P
 
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Create company</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Creates a tenant from this qualified lead. Industry model only prepares editable defaults and never locks the system.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Creates a company workspace from this qualified lead. Industry model only prepares editable defaults and never locks the system.</p>
             <form action={createCompanyFromDemoRequestAction} className="mt-4">
               <input type="hidden" name="demo_request_id" value={request.id} />
               <button disabled={Boolean(request.created_company_id)} className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">

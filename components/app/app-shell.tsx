@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { switchActiveCompanyAction } from '@/lib/platform/actions'
-import { isPlatformAdminRole } from '@/lib/auth/permissions'
+import { COMPANY_ROLE_LABELS, isPlatformAdminRole, type CompanyRole } from '@/lib/auth/permissions'
 import type { AuthContext } from '@/lib/auth/session'
 import { createTranslator, type TranslationKey } from '@/lib/i18n/labels'
 
@@ -65,7 +65,7 @@ type AppShellProps = {
 export function AppShell({ auth, title, subtitle, children, actions }: AppShellProps) {
   const { t } = createTranslator(auth.membership?.locale)
   const companyName = auth.membership?.companyName ?? t('app.noActiveWorkspace')
-  const role = auth.membership?.companyRole ?? t('app.noRole')
+  const role = auth.membership?.companyRole ? COMPANY_ROLE_LABELS[auth.membership.companyRole as CompanyRole] : t('app.noRole')
   const industryLabel = auth.membership?.industryLabel ?? t('app.noIndustry')
   const isPlatformAdmin = isPlatformAdminRole(auth.platformRole)
 

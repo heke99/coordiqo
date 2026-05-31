@@ -84,7 +84,7 @@ export default async function ShiftPresetsPage({ searchParams }: { searchParams:
                 <Link href={`/schedule?preset=${preset.id}`} className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Använd</Link>
               </div>
             </div>
-          )) : <div className="lg:col-span-3"><EmptyState eyebrow="Batch 7B" title="Inga passpresets ännu" description="Skapa en egen preset eller kör SQL-migrationen för att få branschbaserade systempresets." action={<Link href="/availability/presets/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa preset</Link>} /></div>}
+          )) : <div className="lg:col-span-3"><EmptyState eyebrow="Passmallar" title="Inga passmallar ännu" description="Skapa en egen mall eller be Coordiqo-teamet aktivera branschmallar." action={<Link href="/availability/presets/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa mall</Link>} /></div>}
         </section>
       </div>
     </AppShell>

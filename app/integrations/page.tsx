@@ -48,27 +48,27 @@ export default async function IntegrationsPage() {
     <AppShell
       auth={auth}
       title="AI, kunskap och integrationer"
-      subtitle="Langflow, Langfuse, Notion, SMS, e-post, API, webhooks och enterprise-kopplingar utan att flytta affärslogik ur Coordiqo."
+      subtitle="AI, kunskapskällor, SMS, e-post, API, webhooks och företagskopplingar utan att flytta affärslogik ur Coordiqo."
       actions={<Link href="/settings/health" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Systemhälsa</Link>}
     >
       <div className="space-y-5">
         <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Langflow</p><StatusBadge status={langflowReady ? 'ready' : 'needs_action'} tone={langflowReady ? 'success' : 'warning'} /></div>
-          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Langfuse</p><StatusBadge status={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'ready' : 'needs_action'} tone={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'success' : 'warning'} /></div>
-          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Notion</p><StatusBadge status={notion.notionApiKey ? 'ready' : 'needs_action'} tone={notion.notionApiKey ? 'success' : 'warning'} /></div>
+          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">AI-beslutsstöd</p><StatusBadge status={langflowReady ? 'ready' : 'needs_action'} tone={langflowReady ? 'success' : 'warning'} /></div>
+          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">AI-spårning</p><StatusBadge status={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'ready' : 'needs_action'} tone={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'success' : 'warning'} /></div>
+          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Kunskapskälla</p><StatusBadge status={notion.notionApiKey ? 'ready' : 'needs_action'} tone={notion.notionApiKey ? 'success' : 'warning'} /></div>
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">SMS</p><StatusBadge status={messaging.smsReady ? 'ready' : 'needs_action'} tone={messaging.smsReady ? 'success' : 'warning'} /></div>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
           <div className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Registrera integrationsinställning</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Spara provider, status och referens till hemlighet. Själva nycklarna läggs i miljövariabler eller secret store.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Spara tjänst, status och intern referens. Själva nycklarna hanteras säkert i miljövariabler.</p>
             <form action={saveIntegrationSettingAction} className="mt-5 grid gap-4">
-              <Field label="Provider">
+              <Field label="Tjänst">
                 <select name="provider" defaultValue="langflow" className={selectClassName}>
-                  <option value="langflow">Langflow</option>
-                  <option value="langfuse">Langfuse</option>
-                  <option value="notion">Notion</option>
+                  <option value="langflow">AI-flödestjänst</option>
+                  <option value="langfuse">AI-spårning</option>
+                  <option value="notion">Kunskapskälla</option>
                   <option value="twilio">SMS</option>
                   <option value="api">API/Webhook</option>
                   <option value="calendar">Kalender</option>
@@ -76,7 +76,7 @@ export default async function IntegrationsPage() {
               </Field>
               <Field label="Namn"><input name="label" className={inputClassName} /></Field>
               <Field label="Bas-URL"><input name="base_url" className={inputClassName} /></Field>
-              <Field label="Secret ref"><input name="secret_ref" placeholder="ex. LANGFLOW_API_KEY" className={inputClassName} /></Field>
+              <Field label="Intern nyckelreferens"><input name="secret_ref" placeholder="ex. ai-service-production" className={inputClassName} /></Field>
               <Field label="Status"><select name="status" defaultValue="inactive" className={selectClassName}><option value="inactive">Inaktiv</option><option value="active">Aktiv</option></select></Field>
               <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Spara integration</button>
             </form>
@@ -88,11 +88,11 @@ export default async function IntegrationsPage() {
               <form action={createAiDecisionSupportRunAction} className="mt-4 grid gap-3">
                 <Field label="Agent">
                   <select name="run_type" defaultValue="operations_summary" className={selectClassName}>
-                    <option value="operations_summary">Operations Summary Agent</option>
-                    <option value="message_classifier">Message Classifier Agent</option>
-                    <option value="deviation_agent">Deviation Agent</option>
-                    <option value="project_calculation_agent">Project Calculation Agent</option>
-                    <option value="knowledge_agent">Knowledge Agent</option>
+                    <option value="operations_summary">Sammanfatta drift</option>
+                    <option value="message_classifier">Klassificera meddelande</option>
+                    <option value="deviation_agent">Föreslå avvikelsehantering</option>
+                    <option value="project_calculation_agent">Stöd för projektkalkyl</option>
+                    <option value="knowledge_agent">Sök i kunskapskälla</option>
                   </select>
                 </Field>
                 <Field label="Fråga eller kontext"><input name="prompt" className={inputClassName} /></Field>

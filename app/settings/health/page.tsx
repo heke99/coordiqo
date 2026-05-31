@@ -26,18 +26,21 @@ export default async function SettingsHealthPage() {
   const notion = getNotionKnowledgeConfig()
   const aiConfig = getAiProviderConfig(auth.membership.locale)
   const langflowReady = isLangflowConfigured(aiConfig)
+  const graphhopperReady = Boolean(process.env.GRAPHHOPPER_API_URL && process.env.GRAPHHOPPER_API_KEY)
+  const routingReady = Boolean(process.env.VALHALLA_API_URL || graphhopperReady)
+  const vroomReady = Boolean(process.env.VROOM_API_URL)
   const integrationChecks = [
     {
       key: 'email_provider',
-      label: 'Email provider konfigurerad',
+      label: 'E-post konfigurerad',
       ok: Boolean(process.env.RESEND_API_KEY),
       severity: 'warning' as const,
       href: '/settings/invitations',
-      detail: process.env.RESEND_API_KEY ? 'Resend finns' : 'RESEND_API_KEY saknas',
+      detail: process.env.RESEND_API_KEY ? 'E-post kan skickas' : 'E-post är inte konfigurerad',
     },
     {
       key: 'storage_bucket',
-      label: 'Storage bucket namn finns',
+      label: 'Dokumentlagring',
       ok: Boolean(process.env.SUPABASE_STORAGE_BUCKET ?? 'coordiqo-documents'),
       severity: 'info' as const,
       href: '/settings',
@@ -45,59 +48,61 @@ export default async function SettingsHealthPage() {
     },
     {
       key: 'maps_provider',
-      label: 'Maps/routing provider',
-      ok: Boolean(process.env.NEXT_PUBLIC_MAPLIBRE_STYLE_URL || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.VALHALLA_API_URL || process.env.GRAPHHOPPER_API_URL),
+      label: 'Karta och ruttdata',
+      ok: routingReady || Boolean(process.env.NEXT_PUBLIC_MAPLIBRE_STYLE_URL),
       severity: 'warning' as const,
       href: '/operations/today',
       detail: process.env.VALHALLA_API_URL
-        ? 'Valhalla URL finns'
-        : process.env.GRAPHHOPPER_API_URL
-          ? 'GraphHopper URL finns'
+        ? 'Valhalla är konfigurerad'
+        : graphhopperReady
+          ? 'GraphHopper är konfigurerad'
+          : process.env.GRAPHHOPPER_API_URL
+            ? 'GraphHopper behöver kompletteras'
           : process.env.NEXT_PUBLIC_MAPLIBRE_STYLE_URL
-            ? 'MapLibre style finns'
+            ? 'Kartstil finns, ruttdata använder uppskattning'
             : process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-              ? 'Google Maps finns'
+              ? 'Kartnyckel finns'
               : 'Routing/karta saknas ännu',
     },
     {
       key: 'vroom_provider',
-      label: 'VROOM optimering',
-      ok: Boolean(process.env.VROOM_API_URL),
+      label: 'Ruttoptimering',
+      ok: vroomReady,
       severity: 'info' as const,
       href: '/planning',
-      detail: process.env.VROOM_API_URL ? 'VROOM URL finns' : 'Fallback-optimering används tills VROOM kopplas',
+      detail: vroomReady ? 'Extern optimering är konfigurerad' : 'Intern optimering används tills extern tjänst kopplas',
     },
     {
       key: 'langflow_provider',
-      label: 'Langflow/AI provider',
+      label: 'AI-beslutsstöd',
       ok: langflowReady,
       severity: 'info' as const,
       href: '/planning/assistant',
-      detail: langflowReady ? 'Langflow flow finns' : 'LANGFLOW_API_URL eller LANGFLOW_SERVER_URL + LANGFLOW_FLOW_ID saknas',
+      detail: langflowReady ? 'AI-tjänsten är kopplad' : 'AI-tjänsten är inte färdigkopplad',
     },
     {
       key: 'langfuse_provider',
-      label: 'Langfuse tracing',
+      label: 'AI-spårning',
       ok: Boolean(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY),
       severity: 'info' as const,
       href: '/planning/assistant',
-      detail: process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY ? 'Langfuse nycklar finns' : 'Ej kopplad ännu',
+      detail: process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY ? 'AI-spårning är konfigurerad' : 'AI-spårning är inte konfigurerad',
     },
     {
       key: 'notion_provider',
-      label: 'Notion kunskapskälla',
+      label: 'Kunskapskälla',
       ok: Boolean(notion.notionApiKey),
       severity: 'info' as const,
       href: '/settings',
-      detail: notion.notionApiKey ? 'Notion API-nyckel finns' : 'Notion kopplas när kunskapsbasen aktiveras',
+      detail: notion.notionApiKey ? 'Kunskapskälla är konfigurerad' : 'Kunskapskälla kopplas när funktionen aktiveras',
     },
     {
       key: 'sms_provider',
-      label: 'SMS provider',
+      label: 'SMS',
       ok: messaging.smsReady,
       severity: 'info' as const,
       href: '/settings',
-      detail: messaging.smsReady ? 'SMS-provider finns' : 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN och TWILIO_FROM_NUMBER saknas',
+      detail: messaging.smsReady ? 'SMS är konfigurerat' : 'SMS är inte konfigurerat',
     },
   ]
 
@@ -106,15 +111,15 @@ export default async function SettingsHealthPage() {
   const warnings = checks.filter((check) => !check.ok && check.severity === 'warning').length
 
   return (
-    <AppShell auth={auth} title="Systemhälsa" subtitle="Readiness-check för tenant-isolering, roller, grunddata, audit och viktiga integrationer.">
+    <AppShell auth={auth} title="Systemhälsa" subtitle="Systemkontroll för företagsisolering, roller, grunddata, ändringslogg och viktiga integrationer.">
       <div className="space-y-5">
         <section className="coordiqo-card bg-slate-950 p-6 text-white">
-          <p className="text-sm font-semibold text-slate-300">Foundation readiness</p>
+          <p className="text-sm font-semibold text-slate-300">Grundinställningar</p>
           <h2 className="mt-2 text-2xl font-semibold">
             {critical === 0 && warnings === 0 ? 'Bolaget ser redo ut' : `${critical} kritiska saker · ${warnings} varningar`}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            Grunden kontrollerar tenant, roller, audit, operativa data och integrationsnycklar innan bolaget går vidare till pilot.
+            Grunden kontrollerar företagsisolering, roller, ändringslogg, operativa data och integrationer innan bolaget går vidare i drift.
           </p>
         </section>
 

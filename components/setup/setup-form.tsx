@@ -101,7 +101,7 @@ export default function SetupForm({ userEmail }: { userEmail: string | null }) {
                 Skapa din första Coordiqo-miljö
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
-                Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen tenant,
+                Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen företagsmiljö,
                 grundinställningar och ditt första team direkt. Objektmodellen låses inte här, utan styrs av bransch och kan anpassas per företag.
               </p>
             </div>

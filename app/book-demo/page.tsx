@@ -22,7 +22,7 @@ const needs = [
   'Mobile staff execution',
   'Deviation handling',
   'AI planning support',
-  'Reporting and billing underlay',
+  'Reporting and invoicing support',
 ]
 
 export default async function BookDemoPage({ searchParams }: { searchParams: Promise<{ success?: string }> }) {
@@ -42,7 +42,7 @@ export default async function BookDemoPage({ searchParams }: { searchParams: Pro
             <div className="coordiqo-badge coordiqo-badge--success">Request received</div>
             <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950">Thanks — we will contact you</h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Your demo request has been saved. A Coordiqo team member will contact you to qualify your company and book a demo.
+              Your request has been saved. A Coordiqo team member will contact you to understand your company and book a guided walkthrough.
             </p>
             <Link href="/" className="mt-6 inline-flex rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Back to start</Link>
           </section>
@@ -52,14 +52,14 @@ export default async function BookDemoPage({ searchParams }: { searchParams: Pro
               <div className="coordiqo-badge coordiqo-badge--success">Book demo</div>
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-slate-950">Tell us about your operations</h1>
               <p className="mt-4 text-sm leading-7 text-slate-600">
-                Coordiqo is onboarded with a sales-led flow. We qualify the company, prepare a demo and let a superadmin create the tenant and first admin account after approval.
+                Coordiqo uses guided onboarding. We learn about your company, prepare the right walkthrough and create your company workspace and first administrator account after approval.
               </p>
               <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <h2 className="font-semibold text-slate-950">What happens next?</h2>
                 <ol className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
                   <li>1. We review your company and use case.</li>
-                  <li>2. We book a guided demo.</li>
-                  <li>3. Superadmin creates your company and first admin manually.</li>
+                  <li>2. We book a guided walkthrough.</li>
+                  <li>3. The Coordiqo team creates your company and first administrator manually.</li>
                   <li>4. Your company admin changes temporary password and completes onboarding.</li>
                 </ol>
               </div>
@@ -118,7 +118,7 @@ export default async function BookDemoPage({ searchParams }: { searchParams: Pro
 
                 <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
                   <input type="checkbox" name="consent" required className="mt-1" />
-                  I agree that Coordiqo may contact me about this demo request.
+                  I agree that Coordiqo may contact me about this request.
                 </label>
 
                 <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Request access</button>

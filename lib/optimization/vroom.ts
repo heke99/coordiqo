@@ -92,29 +92,38 @@ export async function runVroomOptimization(input: VroomOptimizationRequest): Pro
   const apiKey = process.env.VROOM_API_KEY
   if (!endpoint) return createFallbackOptimization(input)
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(apiKey ? { 'x-api-key': apiKey, authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify(input),
-  })
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(apiKey ? { 'x-api-key': apiKey, authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify(input),
+    })
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return {
+        ...createFallbackOptimization(input),
+        status: 'failed',
+        provider: 'vroom',
+        providerPayload: { status: response.status, body: await response.text() },
+      }
+    }
+
+    const payload = await response.json().catch(async () => ({ body: await response.text().catch(() => '') }))
+    return {
+      ...createFallbackOptimization(input),
+      provider: 'vroom',
+      providerPayload: payload,
+    }
+  } catch (error) {
     return {
       ...createFallbackOptimization(input),
       status: 'failed',
       provider: 'vroom',
-      providerPayload: { status: response.status, body: await response.text() },
+      providerPayload: { error: error instanceof Error ? error.message : 'Den externa optimeringstjänsten kunde inte nås.' },
     }
-  }
-
-  const payload = await response.json()
-  return {
-    ...createFallbackOptimization(input),
-    provider: 'vroom',
-    providerPayload: payload,
   }
 }
 

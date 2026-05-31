@@ -20,9 +20,9 @@ export function PermissionMatrix({ permissions = [] }: { permissions?: Permissio
   return (
     <section className="coordiqo-card overflow-hidden">
       <div className="border-b border-slate-200 p-5 sm:p-6">
-        <h2 className="text-xl font-semibold tracking-tight text-slate-950">Rollmatris med overrides</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">Rollmatris med anpassningar</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Matrisen visar faktiska company-permissions. Varje cell kan skrivas över per företag och loggas i audit.
+          Matrisen visar faktiska behörigheter. Varje cell kan anpassas per företag och loggas i ändringshistoriken.
         </p>
       </div>
       <div className="overflow-x-auto coordiqo-scrollbar">
@@ -46,7 +46,7 @@ export function PermissionMatrix({ permissions = [] }: { permissions?: Permissio
                   const stored = overrideMap.get(`${role}:${action}`)
                   const fallbackAllowed = COMPANY_ROLE_RANK[role] >= COMPANY_ROLE_RANK[PERMISSION_MATRIX[action].minimumRole]
                   const allowed = stored?.is_allowed ?? fallbackAllowed
-                  const source = stored?.source ?? 'kod-default'
+                  const source = stored?.source === 'company_override' ? 'Anpassad' : 'Standard'
                   return (
                     <td key={`${action}-${role}`} className="px-4 py-4 align-top">
                       <div className="space-y-2">

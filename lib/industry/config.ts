@@ -281,7 +281,7 @@ export function allCompanyCoreModules() {
 }
 
 export const CORE_MODULES = [
-  { code: 'foundation', label: 'Plattformsgrund', description: 'Auth, företag, roller, team och tenant-isolering.' },
+  { code: 'foundation', label: 'Plattformsgrund', description: 'Inloggning, företag, roller, team och företagsisolering.' },
   { code: 'industry_engine', label: 'Branschmotor', description: 'Styr språk, navigation, moduler och objektpresets per företag.' },
   { code: 'resources', label: 'Personal och resurser', description: 'Personalprofiler, fordon, utrustning och organisation.' },
   { code: 'entities', label: 'Objektregister', description: 'Flexibel modell för kunder, platser, fastigheter, patienter och andra objekt.' },

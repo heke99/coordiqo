@@ -211,7 +211,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                 </div>
               </form>
             ) : (
-              <EmptyState eyebrow="Batch 7B" title="Inga pass ännu" description="Skapa snabbt med preset, flera personal eller team. Avancerat pass finns kvar för specialfall." action={<Link href="/availability/presets" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Välj preset</Link>} />
+              <EmptyState eyebrow="Schema" title="Inga pass ännu" description="Skapa snabbt med mall, flera personal eller team. Avancerat pass finns kvar för specialfall." action={<Link href="/availability/presets" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Välj mall</Link>} />
             )}
           </section>
 

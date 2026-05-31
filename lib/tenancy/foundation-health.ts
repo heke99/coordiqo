@@ -59,7 +59,7 @@ export async function getFoundationHealthChecks(companyId: string) {
   const checks: FoundationHealthCheck[] = [
     {
       key: 'company_active',
-      label: 'Tenant är aktiv',
+      label: 'Företagsmiljön är aktiv',
       ok: company?.status === 'active' && (company?.lifecycle_status ?? 'active') === 'active',
       severity: 'critical',
       href: '/settings/health',
@@ -143,7 +143,7 @@ export async function getFoundationHealthChecks(companyId: string) {
       ok: permissionOverrides >= 0,
       severity: 'info',
       href: '/settings/permissions',
-      detail: `${permissionOverrides} permission overrides`,
+      detail: `${permissionOverrides} anpassade behörigheter`,
     },
     {
       key: 'routing_provider_foundation',

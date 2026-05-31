@@ -80,7 +80,7 @@ export default async function ProjectsPage() {
 
           <section className="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white">
             <h2 className="text-lg font-semibold">Viktigt om AI-lagret</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">LLM ska hjälpa admin att strukturera intake och föreslå saknade svar. Själva tid/kostnad räknas från tabellerna project_estimation_rules och kan ändras per bolag.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">AI kan hjälpa ansvariga att strukturera intag och föreslå saknade svar. Själva tid och kostnad räknas från företagets kalkylregler och kan ändras per bolag.</p>
           </section>
         </aside>
       </div>

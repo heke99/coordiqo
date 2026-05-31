@@ -89,7 +89,7 @@ export default async function PlanningPage() {
                   </div>
                   <form action={resolvePlanningConflictAction} className="mt-3 grid gap-2">
                     <input type="hidden" name="id" value={conflict.id} />
-                    <select name="resolution_type" defaultValue="resolved" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-slate-900"><option value="resolved">Löst</option><option value="override">Override</option><option value="accept_risk">Acceptera risk</option><option value="ignore">Ignorera</option></select>
+                    <select name="resolution_type" defaultValue="resolved" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-slate-900"><option value="resolved">Löst</option><option value="override">Undantag</option><option value="accept_risk">Acceptera risk</option><option value="ignore">Ignorera</option></select>
                     <input name="reason" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-slate-900" placeholder="Kort orsak" />
                     <button className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-semibold text-white">Markera</button>
                   </form>

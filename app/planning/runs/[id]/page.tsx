@@ -133,7 +133,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
 
                 <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-slate-950">Spara som planeringsmall</p>
-                  <p className="mt-1 text-xs text-slate-500">Batch 8C: återanvänd samma uppdrag, tider, personal/team och ordning som ett nytt utkast senare.</p>
+                  <p className="mt-1 text-xs text-slate-500">Återanvänd samma uppdrag, tider, personal/team och ordning som ett nytt utkast senare.</p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <input form="save-template-form" name="name" className={inputClassName} placeholder={`Mall · ${run.name}`} />
                     <input form="save-template-form" name="description" className={inputClassName} placeholder="Kort beskrivning" />
@@ -211,11 +211,11 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                   <Field label="Lås rad"><select name="is_locked" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field>
                   <Field label="Låsningsorsak"><input name="locked_reason" className={inputClassName} /></Field>
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                    <p className="text-sm font-semibold text-amber-950">Override av blockerande regler/varningar</p>
+                    <p className="text-sm font-semibold text-amber-950">Undantag för blockerande regler eller varningar</p>
                     <p className="mt-1 text-xs text-amber-800">Använd bara när planerare/admin medvetet vill planera trots blockerande regler. Orsaken sparas i historik och audit.</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-[220px_1fr]">
-                      <Field label="Override"><select name="override_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, planera ändå</option></select></Field>
-                      <Field label="Override-orsak"><input name="override_reason" className={inputClassName} placeholder="Ex. akut kundbehov, känd felregistrering, adminbeslut" /></Field>
+                      <Field label="Undantag"><select name="override_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, planera ändå</option></select></Field>
+                      <Field label="Orsak"><input name="override_reason" className={inputClassName} placeholder="Ex. akut kundbehov, känd felregistrering, ansvarigt beslut" /></Field>
                     </div>
                   </div>
                   <button className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800">Spara draft-rad</button>
@@ -233,7 +233,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                         <div><p className="font-semibold text-amber-950">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.tasks?.title ?? 'Uppdrag'} · {conflict.status}</p></div>
                         <StatusBadge status={conflict.severity} tone={['hard', 'critical', 'blocked'].includes(conflict.severity) ? 'danger' : 'warning'} />
                       </div>
-                      {conflict.status === 'open' ? <form action={resolvePlanningConflictAction} className="mt-3 grid gap-2"><input type="hidden" name="id" value={conflict.id} /><select name="resolution_type" defaultValue="resolved" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs"><option value="resolved">Löst</option><option value="override">Override</option><option value="accept_risk">Acceptera risk</option></select><input name="reason" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs" placeholder="Orsak" /><button className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-semibold text-white">Spara</button></form> : null}
+                      {conflict.status === 'open' ? <form action={resolvePlanningConflictAction} className="mt-3 grid gap-2"><input type="hidden" name="id" value={conflict.id} /><select name="resolution_type" defaultValue="resolved" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs"><option value="resolved">Löst</option><option value="override">Undantag</option><option value="accept_risk">Acceptera risk</option></select><input name="reason" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs" placeholder="Orsak" /><button className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-semibold text-white">Spara</button></form> : null}
                     </div>
                   )) : <p className="text-sm text-slate-600">Inga konflikter.</p>}
                 </div>
