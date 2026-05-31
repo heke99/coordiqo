@@ -89,11 +89,15 @@ export function createFallbackOptimization(input: VroomOptimizationRequest): Opt
 
 export async function runVroomOptimization(input: VroomOptimizationRequest): Promise<OptimizationResult> {
   const endpoint = process.env.VROOM_API_URL
+  const apiKey = process.env.VROOM_API_KEY
   if (!endpoint) return createFallbackOptimization(input)
 
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(apiKey ? { 'x-api-key': apiKey, authorization: `Bearer ${apiKey}` } : {}),
+    },
     body: JSON.stringify(input),
   })
 
