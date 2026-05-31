@@ -58,7 +58,7 @@ export const PERMISSION_MATRIX: Record<PermissionAction, { label: string; minimu
   'platform.manage': {
     label: 'Plattformsadmin',
     minimumRole: 'company_admin',
-    description: 'Endast superadmin/plattformsroller. Visas i matrisen för tydlighet men används inte som företagsrättighet.',
+    description: 'Endast plattformsadministratör. Visas i matrisen för tydlighet men används inte som företagsrättighet.',
   },
   'company.manage': {
     label: 'Hantera företag',

@@ -69,7 +69,7 @@ export default async function NewProjectPage({ searchParams }: { searchParams: P
 
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-950">AI-assistans senare</p>
-            <p className="mt-1 text-sm text-slate-500">Här sparar vi om LLM har hjälpt till med intake. Själva kalkylen styrs ändå av regler i databasen.</p>
+            <p className="mt-1 text-sm text-slate-500">Här sparar vi om AI har hjälpt till med intaget. Själva kalkylen styrs ändå av regler i databasen.</p>
             <input type="hidden" name="ai_assist_status" value="not_used" />
           </section>
 

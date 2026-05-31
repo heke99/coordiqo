@@ -38,7 +38,7 @@ export function getLangflowRunUrl(config: AiProviderConfig) {
 }
 
 export function isLangflowConfigured(config: AiProviderConfig) {
-  return Boolean(getLangflowRunUrl(config))
+  return Boolean(getLangflowRunUrl(config) && config.langflowApiKey)
 }
 
 export function buildAiPromptContext(context: AiRunContext) {
@@ -77,26 +77,42 @@ export async function callLangflow(context: AiRunContext) {
     `company_context: ${JSON.stringify(promptContext)}`,
   ].join('\n')
 
-  const response = await fetch(runUrl, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json',
-      ...(config.langflowApiKey ? { 'x-api-key': config.langflowApiKey } : {}),
-    },
-    body: JSON.stringify({
-      input_value: inputValue,
-      input_type: 'chat',
-      output_type: 'chat',
-      session_id: `${context.companyId}:${context.runType}`,
-    }),
-  })
+  try {
+    const response = await fetch(runUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        ...(config.langflowApiKey ? { 'x-api-key': config.langflowApiKey } : {}),
+      },
+      body: JSON.stringify({
+        input_value: inputValue,
+        input_type: 'chat',
+        output_type: 'chat',
+        session_id: `${context.companyId}:${context.runType}`,
+      }),
+    })
+    const text = await response.text()
+    let output: unknown = text
+    try {
+      output = text ? JSON.parse(text) : {}
+    } catch {
+      output = { body: text }
+    }
 
-  return {
-    provider: 'langflow',
-    status: response.ok ? 'completed' as const : 'failed' as const,
-    locale: config.locale,
-    output: response.ok ? await response.json() : { status: response.status, body: await response.text() },
+    return {
+      provider: 'langflow',
+      status: response.ok ? 'completed' as const : 'failed' as const,
+      locale: config.locale,
+      output: response.ok ? output : { status: response.status, ...((typeof output === 'object' && output !== null) ? output : { body: String(output) }) },
+    }
+  } catch (error) {
+    return {
+      provider: 'langflow',
+      status: 'failed' as const,
+      locale: config.locale,
+      output: { error: error instanceof Error ? error.message : 'AI-tjänsten kunde inte nås.' },
+    }
   }
 }
 

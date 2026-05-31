@@ -170,7 +170,7 @@ export default function SetupPage() {
             <div className="coordiqo-badge coordiqo-badge--success">Nästa steg</div>
             <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950">Ansökan skickad</h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              En superadmin granskar uppgifterna, skapar bolaget och aktiverar första company admin. Du får åtkomst när miljön är godkänd.
+              Coordiqo-teamet granskar uppgifterna, skapar bolaget och aktiverar första företagsadministratör. Du får åtkomst när miljön är godkänd.
             </p>
             <a href="/login" className="mt-6 inline-flex rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Till inloggning</a>
           </section>
@@ -190,7 +190,7 @@ export default function SetupPage() {
                 Ansök om Coordiqo-miljö
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
-                Superadmin skapar och aktiverar bolaget efter granskning. Det gör att tenant, roller, moduler, språk och första company admin blir kontrollerade från start.
+                Coordiqo-teamet skapar och aktiverar bolaget efter granskning. Det gör att företagsmiljö, roller, moduler, språk och första företagsadministratör blir kontrollerade från start.
               </p>
             </div>
 
@@ -198,9 +198,9 @@ export default function SetupPage() {
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
                 <p className="text-sm font-semibold text-slate-900">Det som skickas nu</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  <li>• Bolagsansökan till superadmin</li>
+                  <li>• Bolagsansökan till Coordiqo-teamet</li>
                   <li>• Förslag på bransch, modell och språk</li>
-                  <li>• Uppgifter för första company admin</li>
+                  <li>• Uppgifter för första företagsadministratör</li>
                 </ul>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
@@ -222,7 +222,7 @@ export default function SetupPage() {
 
         <section className="coordiqo-card p-5 sm:p-7">
           <div className="mb-6">
-            <p className="text-sm font-medium text-slate-500">Superadmin-granskning</p>
+            <p className="text-sm font-medium text-slate-500">Granskning av Coordiqo-teamet</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-950">Grunduppgifter</h2>
           </div>
 
@@ -277,7 +277,7 @@ export default function SetupPage() {
                 <option value="sv">Svenska</option>
                 <option value="en">English</option>
               </select>
-              <p className="mt-1.5 text-xs leading-5 text-slate-500">Superadmin kan ändra språket innan bolaget aktiveras.</p>
+              <p className="mt-1.5 text-xs leading-5 text-slate-500">Coordiqo-teamet kan ändra språket innan bolaget aktiveras.</p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

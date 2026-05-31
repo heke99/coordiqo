@@ -2102,7 +2102,7 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
   }
 
   if (overrideApproved && !overrideReason) {
-    throw new Error('Override-orsak krävs när konflikter ska överskridas.')
+    throw new Error('Orsak krävs när konflikter ska överskridas.')
   }
 
   const approvedAt = overrideApproved ? new Date().toISOString() : null
@@ -2129,7 +2129,7 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
       blocking_count: riskSummary.blockingCount,
       warning_count: riskSummary.warningCount,
       info_count: riskSummary.infoCount,
-      explanation: overrideApproved ? `${evaluation.explanation} Override godkänd: ${overrideReason}` : evaluation.explanation,
+      explanation: overrideApproved ? `${evaluation.explanation} Undantag godkänt: ${overrideReason}` : evaluation.explanation,
       metadata: {
         score: evaluation.score,
         conflictLevel: conflictLevel(evaluation.conflicts),
@@ -2190,7 +2190,7 @@ export async function createManualTaskAssignmentAction(formData: FormData) {
     .eq('id', taskId)
     .eq('company_id', auth.membership!.companyId)
 
-  await supabaseAdmin.from('task_status_history').insert({ company_id: auth.membership!.companyId, task_id: taskId, old_status: (task as any).status, new_status: 'assigned', reason: 'Manuell tilldelning via Batch 8B', changed_by: auth.userId })
+  await supabaseAdmin.from('task_status_history').insert({ company_id: auth.membership!.companyId, task_id: taskId, old_status: (task as any).status, new_status: 'assigned', reason: 'Manuell tilldelning', changed_by: auth.userId })
 
   if (shift?.id) await recalculateShiftAssignmentCapacity(auth.membership!.companyId, shift.id)
 
@@ -2447,7 +2447,7 @@ export async function updatePlanningDraftItemAction(formData: FormData) {
   const overrideConflicts = value(formData, 'override_conflicts') === 'true'
   const overrideReason = value(formData, 'override_reason')
   const overrideApproved = overrideConflicts && recalculated.riskSummary.requiresOverride
-  if (overrideApproved && !overrideReason) throw new Error('Override-orsak krävs när blockerande regler eller varningar ska överskridas.')
+  if (overrideApproved && !overrideReason) throw new Error('Orsak krävs när blockerande regler eller varningar ska överskridas.')
   const overrideApprovedAt = overrideApproved ? new Date().toISOString() : null
   if (overrideApproved) {
     await supabaseAdmin
@@ -4894,7 +4894,7 @@ export async function disableCompanyMembershipAction(formData: FormData) {
   const auth = await requirePlatformAdmin('att ta bort bolagsanvändare')
   const membershipId = value(formData, 'membership_id')
   const companyId = value(formData, 'company_id')
-  const reason = value(formData, 'reason') ?? 'Borttagen av superadmin'
+  const reason = value(formData, 'reason') ?? 'Borttagen av plattformsadministratör'
   if (!membershipId || !companyId) throw new Error('Membership och bolag krävs.')
 
   const { error } = await supabaseAdmin.from('company_memberships').update({ status: 'disabled', is_default: false, disabled_by: auth.userId, disabled_at: new Date().toISOString(), disabled_reason: reason, archived_at: new Date().toISOString() }).eq('id', membershipId).eq('company_id', companyId)

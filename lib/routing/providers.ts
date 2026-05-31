@@ -30,7 +30,7 @@ export function getRoutingProviderEnvironment(): RoutingProviderEnvironment {
     return {
       providerCode: 'graphhopper',
       label: 'GraphHopper',
-      configured: true,
+      configured: Boolean(graphhopperApiKey),
       baseUrl: graphhopperUrl,
       apiKeyConfigured: Boolean(graphhopperApiKey),
       styleUrl: mapStyleUrl ?? null,

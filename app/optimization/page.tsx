@@ -67,7 +67,7 @@ export default async function OptimizationPage() {
         <aside className="space-y-5">
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Kör optimering</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">VROOM används när API finns. Annars skapas en säker fallback-plan baserad på tidsfönster, prioritet och koordinater.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Extern optimering används när den är kopplad. Annars skapas en säker intern plan baserad på tidsfönster, prioritet och koordinater.</p>
             <form action={runOptimizationAction} className="mt-5 grid gap-4">
               <Field label="Plan">
                 <select name="plan_label" defaultValue="Plan A" className={selectClassName}>
@@ -76,10 +76,10 @@ export default async function OptimizationPage() {
                   <option>Plan C</option>
                 </select>
               </Field>
-              <Field label="Provider">
+              <Field label="Optimeringstyp">
                 <select name="provider" defaultValue={process.env.VROOM_API_URL ? 'vroom' : 'fallback'} className={selectClassName}>
-                  <option value="fallback">Fallback</option>
-                  <option value="vroom">VROOM</option>
+                  <option value="fallback">Intern optimering</option>
+                  <option value="vroom">Extern optimering</option>
                 </select>
               </Field>
               <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Kör optimering</button>

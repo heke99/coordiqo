@@ -71,7 +71,7 @@ export default async function PlanningAssistantPage() {
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Så tolkar AI-planeraren texten</h2>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
-              <p><b className="text-slate-950">LLM-lagret</b> ska vara assistans ovanpå databasregler och motor, inte ensam källa till tider/kostnad.</p>
+              <p><b className="text-slate-950">AI-assistenten</b> ska vara stöd ovanpå databasregler och motor, inte ensam källa till tider eller kostnad.</p>
               <p><b className="text-slate-950">Planen</b> skapas som draft med kandidater, score och konflikter innan publicering.</p>
               <p><b className="text-slate-950">Regler</b> kommer från pass, personal, kompetenser, certifikat, frånvaro, projekt och uppdrag.</p>
             </div>

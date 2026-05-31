@@ -162,7 +162,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
         project_id: input.projectId ?? null,
         project_phase_id: input.projectPhaseId ?? null,
         project_work_item_id: input.projectWorkItemId ?? null,
-        summary: 'Planeringsutkast skapat av Batch 8A-motorn. Granska kandidater och konflikter innan publicering.',
+        summary: 'Planeringsutkast skapat. Granska kandidater och konflikter innan publicering.',
         created_by: input.actorUserId,
         updated_by: input.actorUserId,
       })

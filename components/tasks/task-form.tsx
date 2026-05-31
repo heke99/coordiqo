@@ -131,7 +131,7 @@ export function TaskForm({ action, task, taskTypes, entities, teams, staff, work
 
       <div className="rounded-3xl border border-slate-200 bg-white p-4">
         <p className="text-sm font-semibold text-slate-950">Kart- och routingunderlag</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">Koordinater används av operationskartan, restidsberäkning och kommande VROOM-optimering. Om uppdraget saknar koordinater försöker systemet använda objektets huvudadress.</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Koordinater används av operationskartan, restidsberäkning och ruttoptimering. Om uppdraget saknar koordinater försöker systemet använda objektets huvudadress.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           <Field label="Platslabel"><input name="location_label" defaultValue={task?.location_label ?? ''} className={inputClassName} placeholder="Ex. Kundens entré, lastkaj, port A" /></Field>
           <Field label="Latitud"><input name="location_latitude" type="number" step="0.0000001" defaultValue={task?.location_latitude ?? ''} className={inputClassName} placeholder="55.60498" /></Field>

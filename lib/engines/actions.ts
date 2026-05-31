@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { buildAiPromptContext, callLangflow } from '@/lib/ai/orchestration'
-import { createFallbackOptimization, type OptimizationJob, type OptimizationVehicle } from '@/lib/optimization/vroom'
+import { createFallbackOptimization, runVroomOptimization, type OptimizationJob, type OptimizationVehicle } from '@/lib/optimization/vroom'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -101,8 +101,8 @@ type TaskForOptimization = {
   id: string
   title: string
   priority: string | null
-  latitude: number | null
-  longitude: number | null
+  location_latitude: number | null
+  location_longitude: number | null
   estimated_duration_minutes: number | null
   time_window_start: string | null
   time_window_end: string | null
@@ -124,12 +124,13 @@ export async function runOptimizationAction(formData: FormData) {
   const auth = await requireCompanyRole('planner', 'att köra optimering')
   const companyId = auth.membership!.companyId
   const planLabel = value(formData, 'plan_label') ?? 'Plan A'
-  const provider = value(formData, 'provider') ?? (process.env.VROOM_API_URL ? 'vroom' : 'fallback')
+  const requestedProvider = value(formData, 'provider') ?? (process.env.VROOM_API_URL ? 'vroom' : 'fallback')
+  const provider = requestedProvider === 'vroom' && process.env.VROOM_API_URL ? 'vroom' : 'fallback'
 
   const [{ data: tasks }, { data: staff }] = await Promise.all([
     supabaseAdmin
       .from('tasks')
-      .select('id, title, priority, latitude, longitude, estimated_duration_minutes, time_window_start, time_window_end')
+      .select('id, title, priority, location_latitude, location_longitude, estimated_duration_minutes, time_window_start, time_window_end')
       .eq('company_id', companyId)
       .is('archived_at', null)
       .in('status', ['new', 'open', 'planned', 'draft', 'assigned'])
@@ -150,8 +151,8 @@ export async function runOptimizationAction(formData: FormData) {
   const jobs: OptimizationJob[] = taskRows.map((task) => ({
     id: task.id,
     taskId: task.id,
-    latitude: task.latitude,
-    longitude: task.longitude,
+    latitude: task.location_latitude,
+    longitude: task.location_longitude,
     serviceSeconds: Math.max(1, task.estimated_duration_minutes ?? 60) * 60,
     priority: priorityScore(task.priority),
     timeWindowStart: task.time_window_start,
@@ -161,7 +162,9 @@ export async function runOptimizationAction(formData: FormData) {
     id: member.id,
     staffProfileId: member.id === 'unassigned' ? null : member.id,
   }))
-  const result = createFallbackOptimization({ jobs, vehicles })
+  const result = provider === 'vroom'
+    ? await runVroomOptimization({ jobs, vehicles })
+    : createFallbackOptimization({ jobs, vehicles })
 
   const { data: run, error: runError } = await supabaseAdmin
     .from('optimization_runs')
@@ -169,8 +172,8 @@ export async function runOptimizationAction(formData: FormData) {
       company_id: companyId,
       provider,
       plan_label: planLabel,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
+      status: result.status,
+      completed_at: result.status === 'completed' ? new Date().toISOString() : null,
       blocking_count: result.unassigned.length,
       warning_count: result.unassigned.length,
       summary: {
@@ -212,6 +215,17 @@ export async function runOptimizationAction(formData: FormData) {
       severity: 'warning',
     })))
     if (error) throw new Error(error.message)
+  }
+
+  if (result.providerPayload) {
+    await supabaseAdmin.from('optimization_provider_payloads').insert({
+      company_id: companyId,
+      optimization_run_id: run.id,
+      provider: result.provider,
+      payload_kind: result.status === 'failed' ? 'error' : 'response',
+      payload: result.providerPayload,
+      redacted: true,
+    })
   }
 
   await supabaseAdmin.from('optimization_metrics').insert([
@@ -527,7 +541,7 @@ export async function createAiDecisionSupportRunAction(formData: FormData) {
   const summary = typeof parsedOutput?.summary === 'string'
     ? parsedOutput.summary
     : langflowResult.status === 'not_configured'
-      ? 'Langflow är inte konfigurerad. Beslutsstöd skapades lokalt.'
+      ? 'AI-tjänsten är inte färdigkopplad. Beslutsstöd skapades lokalt.'
       : outputText.slice(0, 500)
   const classification = typeof parsedOutput?.classification === 'string' ? parsedOutput.classification : runType
   const suggestedAction = typeof action?.type === 'string' ? action.type : 'review'

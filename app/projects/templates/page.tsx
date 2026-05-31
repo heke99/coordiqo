@@ -77,7 +77,7 @@ export default async function ProjectTemplatesPage() {
           </div>
         </section>
 
-        <FormCard title="Skapa egen projektmall" description="Detta är inte LLM som hittar på siffror. Du definierar frågor och regler som databasen sedan använder vid projektskapande.">
+        <FormCard title="Skapa egen projektmall" description="AI kan hjälpa till med struktur, men du definierar frågor och regler som systemet sedan använder vid projektskapande.">
           <form action={createProjectTemplateAction} className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Mallnamn"><input name="name" required className={inputClassName} placeholder="Ex. Standardrenovering" /></Field>

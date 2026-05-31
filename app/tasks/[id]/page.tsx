@@ -81,10 +81,10 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
               <div className="grid gap-4 md:grid-cols-3">
                 <Field label="Status"><select name="status" defaultValue="assigned" className={selectClassName}><option value="assigned">Tilldelad</option><option value="confirmed">Bekräftad</option><option value="draft">Utkast</option></select></Field>
                 <Field label="Lås tilldelning"><select name="is_locked" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja</option></select></Field>
-                <Field label="Override varningar"><select name="override_soft_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, planera ändå</option></select></Field>
+                <Field label="Undantag för varningar"><select name="override_soft_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, planera ändå</option></select></Field>
               </div>
-              <Field label="Override blockerande regler"><select name="override_blocking_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, admin/planerare tar ansvar</option></select></Field>
-              <Field label="Override/låsningsorsak"><textarea name="override_reason" className={textareaClassName} placeholder="Krävs om varningar eller blockerande regler ska överskridas. Beskriv varför planeringen ändå ska göras." /></Field>
+              <Field label="Undantag för blockerande regler"><select name="override_blocking_conflicts" defaultValue="false" className={selectClassName}><option value="false">Nej</option><option value="true">Ja, ansvarig planerar ändå</option></select></Field>
+              <Field label="Orsak till undantag"><textarea name="override_reason" className={textareaClassName} placeholder="Krävs om varningar eller blockerande regler ska överskridas. Beskriv varför planeringen ändå ska göras." /></Field>
               <Field label="Låsningsorsak"><input name="locked_reason" className={inputClassName} placeholder="Ex. kundkrav, nyckelperson, kontinuitet" /></Field>
               <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Kontrollera och tilldela</button>
             </form>

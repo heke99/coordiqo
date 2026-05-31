@@ -32,7 +32,7 @@ export default async function PilotReadinessPage() {
   ])
   const row = readiness as SaasReadinessRow | null
   const checks = [
-    { label: 'Tenant och modules', ok: row?.readiness_status === 'ready', href: '/settings/health' },
+    { label: 'Grundinställningar och moduler', ok: row?.readiness_status === 'ready', href: '/settings/health' },
     { label: 'Personal finns', ok: Number(staff ?? 0) > 0, href: '/staff' },
     { label: 'Uppdrag finns', ok: Number(tasks ?? 0) > 0, href: '/tasks' },
     { label: 'Resurser finns', ok: Number(resources ?? 0) > 0, href: '/resources' },
@@ -46,12 +46,12 @@ export default async function PilotReadinessPage() {
   const ready = checks.filter((check) => check.ok).length
 
   return (
-    <AppShell auth={auth} title="Pilot readiness" subtitle="Checklista för att göra bolaget säljbart och redo för första pilot.">
+    <AppShell auth={auth} title="Driftberedskap" subtitle="Checklista för att göra bolaget redo för skarp drift.">
       <div className="space-y-5">
         <section className="coordiqo-card bg-slate-950 p-6 text-white">
-          <p className="text-sm font-semibold text-slate-300">Pilotstatus</p>
+          <p className="text-sm font-semibold text-slate-300">Driftstatus</p>
           <h2 className="mt-2 text-3xl font-semibold">{ready}/{checks.length} klara steg</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Fyll på grunddata, kör optimering, skapa en kalkyl, öppna chattkanal, skapa AI-beslutsstöd och faktureringsunderlag för en komplett demo.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Fyll på grunddata, kör optimering, skapa en kalkyl, öppna chattkanal, skapa AI-beslutsstöd och faktureringsunderlag för att visa hela plattformen.</p>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
@@ -60,9 +60,9 @@ export default async function PilotReadinessPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-semibold text-slate-950">{check.label}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{check.ok ? 'Redo för demo.' : 'Behöver åtgärd innan pilot.'}</p>
+                  <p className="mt-1 text-sm text-slate-500">{check.ok ? 'Klart.' : 'Behöver åtgärd.'}</p>
                 </div>
-                <StatusBadge status={check.ok ? 'Ready' : 'Needs action'} tone={check.ok ? 'success' : 'warning'} />
+                <StatusBadge status={check.ok ? 'Redo' : 'Behöver åtgärd'} tone={check.ok ? 'success' : 'warning'} />
               </div>
             </Link>
           ))}
