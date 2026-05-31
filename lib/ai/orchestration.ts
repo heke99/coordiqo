@@ -37,6 +37,10 @@ export function getLangflowRunUrl(config: AiProviderConfig) {
   return `${baseUrl}/api/v1/run/${config.langflowFlowId}?stream=false`
 }
 
+export function isLangflowConfigured(config: AiProviderConfig) {
+  return Boolean(getLangflowRunUrl(config))
+}
+
 export function buildAiPromptContext(context: AiRunContext) {
   const config = getAiProviderConfig(context.locale)
   return {
@@ -66,9 +70,12 @@ export async function callLangflow(context: AiRunContext) {
     }
   }
 
-  const inputValue = typeof context.input.prompt === 'string'
-    ? context.input.prompt
-    : JSON.stringify(promptContext)
+  const inputValue = [
+    `locale: ${config.locale}`,
+    `run_type: ${context.runType}`,
+    `message: ${typeof context.input.prompt === 'string' ? context.input.prompt : JSON.stringify(context.input)}`,
+    `company_context: ${JSON.stringify(promptContext)}`,
+  ].join('\n')
 
   const response = await fetch(runUrl, {
     method: 'POST',
@@ -82,9 +89,6 @@ export async function callLangflow(context: AiRunContext) {
       input_type: 'chat',
       output_type: 'chat',
       session_id: `${context.companyId}:${context.runType}`,
-      tweaks: {
-        coordiqo_context: promptContext,
-      },
     }),
   })
 

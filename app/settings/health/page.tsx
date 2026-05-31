@@ -4,6 +4,7 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { getAiProviderConfig, isLangflowConfigured } from '@/lib/ai/orchestration'
 import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
 import { messagingReadiness } from '@/lib/messaging/providers'
 import { requireAuth } from '@/lib/auth/session'
@@ -23,6 +24,8 @@ export default async function SettingsHealthPage() {
   const foundationChecks = await getFoundationHealthChecks(auth.membership.companyId)
   const messaging = messagingReadiness()
   const notion = getNotionKnowledgeConfig()
+  const aiConfig = getAiProviderConfig(auth.membership.locale)
+  const langflowReady = isLangflowConfigured(aiConfig)
   const integrationChecks = [
     {
       key: 'email_provider',
@@ -67,10 +70,10 @@ export default async function SettingsHealthPage() {
     {
       key: 'langflow_provider',
       label: 'Langflow/AI provider',
-      ok: Boolean(process.env.LANGFLOW_API_URL),
+      ok: langflowReady,
       severity: 'info' as const,
       href: '/planning/assistant',
-      detail: process.env.LANGFLOW_API_URL ? 'Langflow URL finns' : 'Ej kopplad ännu',
+      detail: langflowReady ? 'Langflow flow finns' : 'LANGFLOW_API_URL eller LANGFLOW_SERVER_URL + LANGFLOW_FLOW_ID saknas',
     },
     {
       key: 'langfuse_provider',

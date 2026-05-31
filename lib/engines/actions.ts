@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 
 import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
-import { buildAiPromptContext } from '@/lib/ai/orchestration'
+import { buildAiPromptContext, callLangflow } from '@/lib/ai/orchestration'
 import { createFallbackOptimization, type OptimizationJob, type OptimizationVehicle } from '@/lib/optimization/vroom'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -20,6 +20,63 @@ function numberValue(formData: FormData, key: string, fallback = 0) {
   if (!raw) return fallback
   const parsed = Number(raw.replace(',', '.'))
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function findFirstStringByKey(value: unknown, keys: string[]): string | null {
+  if (typeof value === 'string') return null
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findFirstStringByKey(item, keys)
+      if (found) return found
+    }
+    return null
+  }
+  if (!isRecord(value)) return null
+
+  for (const key of keys) {
+    const entry = value[key]
+    if (typeof entry === 'string' && entry.trim() !== '') return entry
+  }
+
+  for (const entry of Object.values(value)) {
+    const found = findFirstStringByKey(entry, keys)
+    if (found) return found
+  }
+  return null
+}
+
+function extractLangflowText(value: unknown): string {
+  if (typeof value === 'string') return value
+  return findFirstStringByKey(value, ['text', 'message', 'content', 'output', 'response']) ?? JSON.stringify(value)
+}
+
+function parseJsonObjectFromText(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '')
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    const start = trimmed.indexOf('{')
+    const end = trimmed.lastIndexOf('}')
+    if (start === -1 || end <= start) return null
+    try {
+      const parsed: unknown = JSON.parse(trimmed.slice(start, end + 1))
+      return isRecord(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+}
+
+function firstSuggestedAction(parsed: Record<string, unknown> | null) {
+  const actions = parsed?.suggested_actions
+  if (!Array.isArray(actions)) return null
+  const first = actions[0]
+  return isRecord(first) ? first : null
 }
 
 async function requireCompanyRole(minimumRole: Parameters<typeof assertCompanyPermission>[1], label: string) {
@@ -463,20 +520,48 @@ export async function createAiDecisionSupportRunAction(formData: FormData) {
   const runType = value(formData, 'run_type') ?? 'operations_summary'
   const prompt = value(formData, 'prompt') ?? ''
   const promptContext = buildAiPromptContext({ companyId, locale: auth.membership!.locale, runType, input: { prompt } })
+  const langflowResult = await callLangflow({ companyId, locale: auth.membership!.locale, runType, input: { prompt } })
+  const outputText = extractLangflowText(langflowResult.output)
+  const parsedOutput = parseJsonObjectFromText(outputText)
+  const action = firstSuggestedAction(parsedOutput)
+  const summary = typeof parsedOutput?.summary === 'string'
+    ? parsedOutput.summary
+    : langflowResult.status === 'not_configured'
+      ? 'Langflow är inte konfigurerad. Beslutsstöd skapades lokalt.'
+      : outputText.slice(0, 500)
+  const classification = typeof parsedOutput?.classification === 'string' ? parsedOutput.classification : runType
+  const suggestedAction = typeof action?.type === 'string' ? action.type : 'review'
+  const decisionReason = typeof action?.reason === 'string' ? action.reason : null
   const { data, error } = await supabaseAdmin.from('ai_runs').insert({
     company_id: companyId,
     run_type: runType,
     locale: auth.membership!.locale,
-    status: 'completed',
+    status: langflowResult.status,
     input_summary: prompt,
-    output_summary: 'Beslutsstöd skapat och redo för granskning.',
-    completed_at: new Date().toISOString(),
+    output_summary: summary,
+    completed_at: langflowResult.status === 'not_configured' ? null : new Date().toISOString(),
     created_by: auth.userId,
-    metadata: promptContext,
+    metadata: {
+      promptContext,
+      langflow: {
+        provider: langflowResult.provider,
+        status: langflowResult.status,
+        locale: langflowResult.locale,
+      },
+      output: parsedOutput ?? outputText,
+    },
   }).select('id').single()
   if (error) throw new Error(error.message)
-  await supabaseAdmin.from('ai_decision_logs').insert({ company_id: companyId, ai_run_id: data.id, decision_type: runType, suggested_action: 'review', validation_status: 'pending' })
-  await audit(companyId, auth.userId, 'ai.decision_support_created', 'ai_run', data.id, { runType })
+  await supabaseAdmin.from('ai_decision_logs').insert({
+    company_id: companyId,
+    ai_run_id: data.id,
+    decision_type: classification,
+    suggested_action: suggestedAction,
+    validation_status: langflowResult.status === 'completed' ? 'pending' : 'provider_not_ready',
+    decision_reason: decisionReason,
+    metadata: parsedOutput ?? { outputText },
+  })
+  await audit(companyId, auth.userId, 'ai.decision_support_created', 'ai_run', data.id, { runType, classification, langflowStatus: langflowResult.status })
   revalidatePath('/integrations')
 }
 
