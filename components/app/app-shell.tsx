@@ -9,6 +9,7 @@ const primaryNav = [
   { href: '/dashboard', labelKey: 'nav.dashboard', descriptionKey: 'nav.dashboard.description' },
   { href: '/operations/today', labelKey: 'nav.operationsToday', descriptionKey: 'nav.operationsToday.description' },
   { href: '/planning', labelKey: 'nav.planning', descriptionKey: 'nav.planning.description' },
+  { href: '/optimization', labelKey: 'nav.optimization', descriptionKey: 'nav.optimization.description' },
   { href: '/planning/assistant', labelKey: 'nav.aiPlanner', descriptionKey: 'nav.aiPlanner.description' },
   { href: '/schedule', labelKey: 'nav.schedule', descriptionKey: 'nav.schedule.description' },
   { href: '/tasks', labelKey: 'nav.tasks', descriptionKey: 'nav.tasks.description' },
@@ -17,6 +18,7 @@ const primaryNav = [
   { href: '/staff', labelKey: 'nav.staff', descriptionKey: 'nav.staff.description' },
   { href: '/teams', labelKey: 'nav.teams', descriptionKey: 'nav.teams.description' },
   { href: '/projects', labelKey: 'nav.projects', descriptionKey: 'nav.projects.description' },
+  { href: '/chat', labelKey: 'nav.chat', descriptionKey: 'nav.chat.description' },
 ]
 
 const secondaryNav = [
@@ -26,6 +28,10 @@ const secondaryNav = [
   { href: '/availability/templates', labelKey: 'nav.availabilityTemplates' },
   { href: '/availability/presets', labelKey: 'nav.shiftPresets' },
   { href: '/work-orders', labelKey: 'nav.workOrders' },
+  { href: '/deviations', labelKey: 'nav.deviations' },
+  { href: '/reports', labelKey: 'nav.reports' },
+  { href: '/integrations', labelKey: 'nav.integrations' },
+  { href: '/pilot', labelKey: 'nav.pilot' },
   { href: '/property', labelKey: 'nav.property' },
 ]
 

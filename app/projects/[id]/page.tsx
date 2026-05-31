@@ -8,6 +8,7 @@ import { ResourceRequirementPanel } from '@/components/resources/resource-requir
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
+import { approveProjectCalculationRunAction, createProjectActualsAction, createProjectCalculationRunAction } from '@/lib/engines/actions'
 import { createPlanningRunAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -24,7 +25,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!auth.membership) return null
   const { id } = await params
 
-  const [{ data: project }, { data: phases }, { data: workItems }, { data: tasks }, { data: runs }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([
+  const [{ data: project }, { data: phases }, { data: workItems }, { data: tasks }, { data: runs }, { data: calculationRuns }, { data: actuals }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([
     supabaseAdmin
       .from('projects')
       .select('*, entities(display_name), project_templates(name)')
@@ -61,6 +62,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       .is('archived_at', null)
       .order('created_at', { ascending: false })
       .limit(8),
+    supabaseAdmin
+      .from('project_calculation_runs')
+      .select('id, version, status, currency, estimated_minutes, internal_cost, recommended_price, margin_percent, risk_markup_percent, created_at')
+      .eq('project_id', id)
+      .eq('company_id', auth.membership.companyId)
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabaseAdmin
+      .from('project_actuals')
+      .select('id, status, actual_minutes, actual_cost, actual_billing_amount, actual_margin_amount, deadline_status, customer_satisfaction, created_at')
+      .eq('project_id', id)
+      .eq('company_id', auth.membership.companyId)
+      .is('archived_at', null)
+      .maybeSingle(),
     supabaseAdmin.from('resource_types').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
     supabaseAdmin.from('resource_assets').select('id, name, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(300),
     supabaseAdmin.from('resource_requirements').select('id, requirement_label, quantity, is_hard_requirement, description, resource_assets(name), resource_types(name)').eq('company_id', auth.membership.companyId).eq('owner_type', 'project').eq('owner_id', id).is('archived_at', null).order('created_at', { ascending: false }),
@@ -68,6 +84,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   if (!project) notFound()
   const today = new Date().toISOString().slice(0, 10)
+  const latestCalculation = (calculationRuns ?? [])[0] as { id: string; version: number; status: string; currency: string; estimated_minutes: number; internal_cost: number; recommended_price: number; margin_percent: number; risk_markup_percent: number; created_at: string } | undefined
+  const projectActuals = actuals as { id: string; status: string; actual_minutes: number; actual_cost: number; actual_billing_amount: number; actual_margin_amount: number; deadline_status: string | null; customer_satisfaction: number | null } | null
 
   return (
     <AppShell
@@ -143,6 +161,66 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </section>
 
         <aside className="space-y-5">
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Projektkalkyl</h2>
+            <p className="mt-1 text-sm text-slate-500">Coordiqo räknar. AI kan föreslå, men kalkylen godkänns av ansvarig.</p>
+            <form action={createProjectCalculationRunAction} className="mt-4 grid gap-3">
+              <input type="hidden" name="project_id" value={project.id} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Timkostnad"><input name="labor_rate" type="number" defaultValue="550" className={inputClassName} /></Field>
+                <Field label="Marginal %"><input name="margin_percent" type="number" defaultValue="30" className={inputClassName} /></Field>
+                <Field label="Risk %"><input name="risk_markup_percent" type="number" defaultValue="10" className={inputClassName} /></Field>
+              </div>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Skapa kalkyl</button>
+            </form>
+            {latestCalculation ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-950">Version {latestCalculation.version}</p>
+                    <p className="mt-1 text-sm text-slate-500">{hours(latestCalculation.estimated_minutes)} h · kostnad {money(latestCalculation.internal_cost, latestCalculation.currency)} · pris {money(latestCalculation.recommended_price, latestCalculation.currency)}</p>
+                  </div>
+                  <StatusBadge status={latestCalculation.status} />
+                </div>
+                {latestCalculation.status !== 'approved' ? (
+                  <form action={approveProjectCalculationRunAction} className="mt-3 grid gap-2">
+                    <input type="hidden" name="id" value={latestCalculation.id} />
+                    <input type="hidden" name="project_id" value={project.id} />
+                    <input name="approval_reason" required placeholder="Orsak till godkännande" className={inputClassName} />
+                    <button className="rounded-2xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">Godkänn kalkyl</button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Efterkalkyl och lärande</h2>
+            {projectActuals ? (
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-950">{hours(projectActuals.actual_minutes)} h faktisk tid</p>
+                    <p className="mt-1 text-sm text-slate-500">Kostnad {money(projectActuals.actual_cost, project.currency)} · debitering {money(projectActuals.actual_billing_amount, project.currency)} · marginal {money(projectActuals.actual_margin_amount, project.currency)}</p>
+                  </div>
+                  <StatusBadge status={projectActuals.status} />
+                </div>
+              </div>
+            ) : null}
+            <form action={createProjectActualsAction} className="mt-4 grid gap-3">
+              <input type="hidden" name="project_id" value={project.id} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Faktiska timmar"><input name="actual_hours" type="number" step="0.25" className={inputClassName} /></Field>
+                <Field label="Faktisk kostnad"><input name="actual_cost" type="number" className={inputClassName} /></Field>
+                <Field label="Debiterat"><input name="actual_billing_amount" type="number" className={inputClassName} /></Field>
+                <Field label="Kundnöjdhet 1-5"><input name="customer_satisfaction" type="number" min="1" max="5" defaultValue="3" className={inputClassName} /></Field>
+              </div>
+              <Field label="Deadline"><select name="deadline_status" defaultValue="on_time" className={selectClassName}><option value="on_time">I tid</option><option value="late">Försenad</option><option value="early">Före deadline</option></select></Field>
+              <Field label="Lärdom"><input name="notes" className={inputClassName} /></Field>
+              <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Spara efterkalkyl</button>
+            </form>
+          </section>
+
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Skicka till planeringsmotor</h2>
             <p className="mt-1 text-sm text-slate-500">Skapar ett planeringsutkast filtrerat på projektets oschemalagda uppdrag.</p>
