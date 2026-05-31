@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createAiDecisionSupportRunAction, saveIntegrationSettingAction } from '@/lib/engines/actions'
-import { getAiProviderConfig } from '@/lib/ai/orchestration'
+import { getAiProviderConfig, isLangflowConfigured } from '@/lib/ai/orchestration'
 import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
 import { messagingReadiness } from '@/lib/messaging/providers'
 import { requireAuth } from '@/lib/auth/session'
@@ -34,6 +34,7 @@ export default async function IntegrationsPage() {
   if (!auth.membership) return null
   const companyId = auth.membership.companyId
   const aiConfig = getAiProviderConfig(auth.membership.locale)
+  const langflowReady = isLangflowConfigured(aiConfig)
   const notion = getNotionKnowledgeConfig()
   const messaging = messagingReadiness()
   const [{ data: settings }, { data: aiRuns }] = await Promise.all([
@@ -52,7 +53,7 @@ export default async function IntegrationsPage() {
     >
       <div className="space-y-5">
         <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Langflow</p><StatusBadge status={aiConfig.langflowApiUrl ? 'ready' : 'needs_action'} tone={aiConfig.langflowApiUrl ? 'success' : 'warning'} /></div>
+          <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Langflow</p><StatusBadge status={langflowReady ? 'ready' : 'needs_action'} tone={langflowReady ? 'success' : 'warning'} /></div>
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Langfuse</p><StatusBadge status={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'ready' : 'needs_action'} tone={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'success' : 'warning'} /></div>
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Notion</p><StatusBadge status={notion.notionApiKey ? 'ready' : 'needs_action'} tone={notion.notionApiKey ? 'success' : 'warning'} /></div>
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">SMS</p><StatusBadge status={messaging.smsReady ? 'ready' : 'needs_action'} tone={messaging.smsReady ? 'success' : 'warning'} /></div>
