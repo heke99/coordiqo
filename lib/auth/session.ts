@@ -18,6 +18,11 @@ export type AuthCompanyMembership = {
   lifecycleStatus: string | null
   activeModules: string[]
   uiLabelSet: string | null
+  locale: string
+  timezone: string
+  currency: string
+  dateFormat: string
+  timeFormat: string
   isDefault: boolean
 }
 
@@ -64,11 +69,11 @@ export async function requireAuth(): Promise<AuthContext> {
     ? await Promise.all([
         supabaseAdmin
           .from('companies')
-          .select('id, name, slug, status, lifecycle_status, industry_type, operational_model')
+          .select('id, name, slug, status, lifecycle_status, industry_type, operational_model, language_code')
           .in('id', companyIds),
         supabaseAdmin
           .from('company_settings')
-          .select('company_id, active_modules, ui_label_set')
+          .select('company_id, active_modules, ui_label_set, locale, timezone, currency, date_format, time_format')
           .in('company_id', companyIds),
       ])
     : [{ data: [] }, { data: [] }]
@@ -96,6 +101,11 @@ export async function requireAuth(): Promise<AuthContext> {
         lifecycleStatus: companyRecord.lifecycle_status ?? null,
         activeModules: settingsRecord?.active_modules ?? [],
         uiLabelSet: settingsRecord?.ui_label_set ?? null,
+        locale: settingsRecord?.locale ?? companyRecord.language_code ?? 'sv',
+        timezone: settingsRecord?.timezone ?? 'Europe/Stockholm',
+        currency: settingsRecord?.currency ?? 'SEK',
+        dateFormat: settingsRecord?.date_format ?? 'yyyy-MM-dd',
+        timeFormat: settingsRecord?.time_format ?? '24h',
         isDefault: Boolean(membershipRecord.is_default),
       }
     })

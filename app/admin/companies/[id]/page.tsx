@@ -15,11 +15,12 @@ export default async function AdminCompanyDetailPage({ params }: { params: Promi
   if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
   const { id } = await params
 
-  const [companyRes, membersRes, invitesRes, auditRes, statsRes] = await Promise.all([
+  const [companyRes, membersRes, invitesRes, auditRes, readinessRes, statsRes] = await Promise.all([
     supabaseAdmin.from('companies').select('*').eq('id', id).maybeSingle(),
     supabaseAdmin.from('company_memberships').select('id, user_id, role, status, is_default, created_at, disabled_at, disabled_reason').eq('company_id', id).order('created_at', { ascending: false }),
     supabaseAdmin.from('company_invitations').select('id, email, full_name, role, status, email_delivery_status, created_at, expires_at').eq('company_id', id).order('created_at', { ascending: false }).limit(10),
     supabaseAdmin.from('audit_logs').select('id, action, entity_type, entity_id, created_at').eq('company_id', id).order('created_at', { ascending: false }).limit(10),
+    supabaseAdmin.from('coordiqo_saas_readiness_v').select('*').eq('company_id', id).maybeSingle(),
     Promise.all([
       supabaseAdmin.from('tasks').select('id', { count: 'exact', head: true }).eq('company_id', id),
       supabaseAdmin.from('staff_profiles').select('id', { count: 'exact', head: true }).eq('company_id', id),
@@ -31,6 +32,7 @@ export default async function AdminCompanyDetailPage({ params }: { params: Promi
 
   const company = companyRes.data
   if (!company) notFound()
+  const readiness = readinessRes.data as any
   const stats = [
     { label: 'Uppdrag', value: statsRes[0].count ?? 0 },
     { label: 'Personal', value: statsRes[1].count ?? 0 },
@@ -70,6 +72,25 @@ export default async function AdminCompanyDetailPage({ params }: { params: Promi
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {stats.map((stat) => <div key={stat.label} className="coordiqo-card p-5"><p className="text-sm text-slate-500">{stat.label}</p><p className="mt-2 text-3xl font-semibold text-slate-950">{stat.value}</p></div>)}
         </section>
+
+        {readiness ? (
+          <section className="coordiqo-card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">SaaS-readiness</h2>
+                <p className="mt-1 text-sm text-slate-500">{readiness.locale} · {readiness.timezone} · {readiness.currency}</p>
+              </div>
+              <StatusBadge status={readiness.readiness_status} />
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs text-slate-500">Aktiva moduler</p><p className="mt-1 text-2xl font-semibold text-slate-950">{readiness.active_module_count}</p></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs text-slate-500">Planerade moduler</p><p className="mt-1 text-2xl font-semibold text-slate-950">{readiness.planned_module_count}</p></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs text-slate-500">Kalkyler</p><p className="mt-1 text-2xl font-semibold text-slate-950">{readiness.project_calculations}</p></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs text-slate-500">Öppna avvikelser</p><p className="mt-1 text-2xl font-semibold text-slate-950">{readiness.open_deviations}</p></div>
+              <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs text-slate-500">AI-körningar</p><p className="mt-1 text-2xl font-semibold text-slate-950">{readiness.ai_runs}</p></div>
+            </div>
+          </section>
+        ) : null}
 
         <section className="coordiqo-card p-5">
           <h2 className="text-lg font-semibold text-slate-950">Användare och medlemskap</h2>

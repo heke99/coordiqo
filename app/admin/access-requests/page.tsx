@@ -27,6 +27,9 @@ export default async function AdminAccessRequestsPage() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">{request.company_name ?? 'Ansökan'}</h2>
                 <p className="mt-1 text-sm text-slate-500">{request.request_type ?? 'access'} · önskad roll {request.requested_role ?? 'company_admin'}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {(request.industry_type ?? 'other')} · {(request.operational_model ?? 'case_based')} · {(request.locale ?? 'sv')} · {(request.timezone ?? 'Europe/Stockholm')} · {(request.currency ?? 'SEK')}
+                </p>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{request.reason ?? request.message ?? 'Ingen motivering angiven.'}</p>
               </div>
               <StatusBadge status={request.status} tone={request.status === 'pending' ? 'warning' : 'neutral'} />

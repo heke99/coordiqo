@@ -4,6 +4,8 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
+import { messagingReadiness } from '@/lib/messaging/providers'
 import { requireAuth } from '@/lib/auth/session'
 import { getFoundationHealthChecks } from '@/lib/tenancy/foundation-health'
 
@@ -19,6 +21,8 @@ export default async function SettingsHealthPage() {
   if (!auth.membership) return null
 
   const foundationChecks = await getFoundationHealthChecks(auth.membership.companyId)
+  const messaging = messagingReadiness()
+  const notion = getNotionKnowledgeConfig()
   const integrationChecks = [
     {
       key: 'email_provider',
@@ -53,6 +57,14 @@ export default async function SettingsHealthPage() {
               : 'Routing/karta saknas ännu',
     },
     {
+      key: 'vroom_provider',
+      label: 'VROOM optimering',
+      ok: Boolean(process.env.VROOM_API_URL),
+      severity: 'info' as const,
+      href: '/planning',
+      detail: process.env.VROOM_API_URL ? 'VROOM URL finns' : 'Fallback-optimering används tills VROOM kopplas',
+    },
+    {
       key: 'langflow_provider',
       label: 'Langflow/AI provider',
       ok: Boolean(process.env.LANGFLOW_API_URL),
@@ -68,6 +80,22 @@ export default async function SettingsHealthPage() {
       href: '/planning/assistant',
       detail: process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY ? 'Langfuse nycklar finns' : 'Ej kopplad ännu',
     },
+    {
+      key: 'notion_provider',
+      label: 'Notion kunskapskälla',
+      ok: Boolean(notion.notionApiKey),
+      severity: 'info' as const,
+      href: '/settings',
+      detail: notion.notionApiKey ? 'Notion API-nyckel finns' : 'Notion kopplas när kunskapsbasen aktiveras',
+    },
+    {
+      key: 'sms_provider',
+      label: 'SMS provider',
+      ok: messaging.smsReady,
+      severity: 'info' as const,
+      href: '/settings',
+      detail: messaging.smsReady ? 'SMS-provider finns' : 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN och TWILIO_FROM_NUMBER saknas',
+    },
   ]
 
   const checks = [...foundationChecks, ...integrationChecks]
@@ -75,7 +103,7 @@ export default async function SettingsHealthPage() {
   const warnings = checks.filter((check) => !check.ok && check.severity === 'warning').length
 
   return (
-    <AppShell auth={auth} title="Systemhälsa" subtitle="Readiness-check för tenant-isolering, roller, grunddata, audit och viktiga integrationer innan vi bygger routing, VROOM och ChatOps.">
+    <AppShell auth={auth} title="Systemhälsa" subtitle="Readiness-check för tenant-isolering, roller, grunddata, audit och viktiga integrationer.">
       <div className="space-y-5">
         <section className="coordiqo-card bg-slate-950 p-6 text-white">
           <p className="text-sm font-semibold text-slate-300">Foundation readiness</p>
@@ -83,7 +111,7 @@ export default async function SettingsHealthPage() {
             {critical === 0 && warnings === 0 ? 'Bolaget ser redo ut' : `${critical} kritiska saker · ${warnings} varningar`}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            Batch 1 säkrar grunden. Routing, VROOM, intern chatt och AI bör byggas först när tenant, roller, audit och operativa grunddata är tydliga.
+            Grunden kontrollerar tenant, roller, audit, operativa data och integrationsnycklar innan bolaget går vidare till pilot.
           </p>
         </section>
 

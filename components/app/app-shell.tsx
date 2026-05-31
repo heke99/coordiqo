@@ -3,47 +3,48 @@ import Link from 'next/link'
 import { switchActiveCompanyAction } from '@/lib/platform/actions'
 import { isPlatformAdminRole } from '@/lib/auth/permissions'
 import type { AuthContext } from '@/lib/auth/session'
+import { createTranslator, type TranslationKey } from '@/lib/i18n/labels'
 
 const primaryNav = [
-  { href: '/dashboard', label: 'Översikt', description: 'Snabb väg in' },
-  { href: '/operations/today', label: 'Operations', description: 'Dagens kontrollpanel' },
-  { href: '/planning', label: 'Planering', description: 'Utkast och konflikter' },
-  { href: '/planning/assistant', label: 'AI-planerare', description: 'Text till plan' },
-  { href: '/schedule', label: 'Schema', description: 'Pass och kapacitet' },
-  { href: '/tasks', label: 'Uppdrag', description: 'Ärenden och jobb' },
-  { href: '/entities', label: 'Objekt', description: 'Kunder, platser, patienter' },
-  { href: '/resources', label: 'Resurser', description: 'Nycklar, fordon, verktyg' },
-  { href: '/staff', label: 'Personal', description: 'Utförare och kompetens' },
-  { href: '/teams', label: 'Team', description: 'Områden och grupper' },
-  { href: '/projects', label: 'Projekt', description: 'Projekt och arbetsmoment' },
+  { href: '/dashboard', labelKey: 'nav.dashboard', descriptionKey: 'nav.dashboard.description' },
+  { href: '/operations/today', labelKey: 'nav.operationsToday', descriptionKey: 'nav.operationsToday.description' },
+  { href: '/planning', labelKey: 'nav.planning', descriptionKey: 'nav.planning.description' },
+  { href: '/planning/assistant', labelKey: 'nav.aiPlanner', descriptionKey: 'nav.aiPlanner.description' },
+  { href: '/schedule', labelKey: 'nav.schedule', descriptionKey: 'nav.schedule.description' },
+  { href: '/tasks', labelKey: 'nav.tasks', descriptionKey: 'nav.tasks.description' },
+  { href: '/entities', labelKey: 'nav.entities', descriptionKey: 'nav.entities.description' },
+  { href: '/resources', labelKey: 'nav.resources', descriptionKey: 'nav.resources.description' },
+  { href: '/staff', labelKey: 'nav.staff', descriptionKey: 'nav.staff.description' },
+  { href: '/teams', labelKey: 'nav.teams', descriptionKey: 'nav.teams.description' },
+  { href: '/projects', labelKey: 'nav.projects', descriptionKey: 'nav.projects.description' },
 ]
 
 const secondaryNav = [
-  { href: '/planning/templates', label: 'Planeringsmallar' },
-  { href: '/projects/templates', label: 'Projektmallar' },
-  { href: '/availability', label: 'Tillgänglighet' },
-  { href: '/availability/templates', label: 'Tillgänglighetsmallar' },
-  { href: '/availability/presets', label: 'Passpresets' },
-  { href: '/work-orders', label: 'Arbetsorder' },
-  { href: '/property', label: 'Fastighet' },
+  { href: '/planning/templates', labelKey: 'nav.planningTemplates' },
+  { href: '/projects/templates', labelKey: 'nav.projectTemplates' },
+  { href: '/availability', labelKey: 'nav.availability' },
+  { href: '/availability/templates', labelKey: 'nav.availabilityTemplates' },
+  { href: '/availability/presets', labelKey: 'nav.shiftPresets' },
+  { href: '/work-orders', labelKey: 'nav.workOrders' },
+  { href: '/property', labelKey: 'nav.property' },
 ]
 
 const settingsNav = [
-  { href: '/settings', label: 'Inställningar' },
-  { href: '/settings/industry', label: 'Branschmotor' },
-  { href: '/settings/skills', label: 'Kompetenser' },
-  { href: '/settings/permissions', label: 'Behörigheter' },
-  { href: '/settings/invitations', label: 'Inbjudningar' },
-  { href: '/settings/health', label: 'Systemhälsa' },
-  { href: '/settings/support', label: 'Supportläge' },
-  { href: '/audit', label: 'Auditlogg' },
-  { href: '/notifications', label: 'Notiser' },
+  { href: '/settings', labelKey: 'app.settings' },
+  { href: '/settings/industry', labelKey: 'nav.industry' },
+  { href: '/settings/skills', labelKey: 'nav.skills' },
+  { href: '/settings/permissions', labelKey: 'nav.permissions' },
+  { href: '/settings/invitations', labelKey: 'nav.invitations' },
+  { href: '/settings/health', labelKey: 'nav.health' },
+  { href: '/settings/support', labelKey: 'nav.support' },
+  { href: '/audit', labelKey: 'nav.audit' },
+  { href: '/notifications', labelKey: 'nav.notifications' },
 ]
 
 const platformNav = [
-  { href: '/admin', label: 'Superadmin' },
-  { href: '/admin/companies', label: 'Bolag' },
-  { href: '/admin/access-requests', label: 'Ansökningar' },
+  { href: '/admin', labelKey: 'nav.admin' },
+  { href: '/admin/companies', labelKey: 'nav.companies' },
+  { href: '/admin/access-requests', labelKey: 'nav.accessRequests' },
 ]
 
 type AppShellProps = {
@@ -55,9 +56,10 @@ type AppShellProps = {
 }
 
 export function AppShell({ auth, title, subtitle, children, actions }: AppShellProps) {
-  const companyName = auth.membership?.companyName ?? 'Ingen aktiv miljö'
-  const role = auth.membership?.companyRole ?? 'saknar roll'
-  const industryLabel = auth.membership?.industryLabel ?? 'Bransch ej vald'
+  const { t } = createTranslator(auth.membership?.locale)
+  const companyName = auth.membership?.companyName ?? t('app.noActiveWorkspace')
+  const role = auth.membership?.companyRole ?? t('app.noRole')
+  const industryLabel = auth.membership?.industryLabel ?? t('app.noIndustry')
   const isPlatformAdmin = isPlatformAdminRole(auth.platformRole)
 
   return (
@@ -70,14 +72,14 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
             </div>
             <div>
               <p className="text-base font-semibold tracking-tight text-slate-950">Coordiqo</p>
-              <p className="text-xs text-slate-500">Operations platform</p>
+              <p className="text-xs text-slate-500">{t('app.product.subtitle')}</p>
             </div>
           </Link>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 coordiqo-scrollbar">
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Aktiv miljö</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('app.activeWorkspace')}</p>
             <p className="mt-2 truncate text-sm font-semibold text-slate-950">{companyName}</p>
             <p className="mt-1 text-xs text-slate-500">{industryLabel}</p>
             <p className="mt-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
@@ -86,7 +88,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
 
             {auth.memberships.length > 1 ? (
               <div className="mt-4 border-t border-slate-200 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Byt företag</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('app.switchCompany')}</p>
                 <div className="mt-2 space-y-2">
                   {auth.memberships.map((membership) => (
                     <form key={membership.membershipId} action={switchActiveCompanyAction}>
@@ -111,18 +113,18 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
           <nav className="mt-6 space-y-1">
             {primaryNav.map((item) => (
               <Link key={item.href} href={item.href} className="group block rounded-2xl px-3 py-3 transition hover:bg-slate-100">
-                <span className="text-sm font-semibold text-slate-900">{item.label}</span>
-                <span className="mt-0.5 block text-xs text-slate-500">{item.description}</span>
+                <span className="text-sm font-semibold text-slate-900">{t(item.labelKey as TranslationKey)}</span>
+                <span className="mt-0.5 block text-xs text-slate-500">{t(item.descriptionKey as TranslationKey)}</span>
               </Link>
             ))}
           </nav>
 
           <div className="mt-6 border-t border-slate-200 pt-4">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Mer</p>
+            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('app.more')}</p>
             <nav className="mt-2 space-y-1 pb-4">
               {secondaryNav.map((item) => (
                 <Link key={item.href} href={item.href} className="block rounded-2xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
-                  {item.label}
+                  {t(item.labelKey as TranslationKey)}
                 </Link>
               ))}
             </nav>
@@ -131,11 +133,11 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
 
           {isPlatformAdmin ? (
             <div className="mt-6 border-t border-slate-200 pt-4">
-              <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Plattform</p>
+              <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('app.platform')}</p>
               <nav className="mt-2 space-y-1 pb-4">
                 {platformNav.map((item) => (
                   <Link key={item.href} href={item.href} className="block rounded-2xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
-                    {item.label}
+                    {t(item.labelKey as TranslationKey)}
                   </Link>
                 ))}
               </nav>
@@ -143,11 +145,11 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
           ) : null}
 
           <div className="border-t border-slate-200 pt-4">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Inställningar</p>
+            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('app.settings')}</p>
             <nav className="mt-2 space-y-1 pb-4">
               {settingsNav.map((item) => (
                 <Link key={item.href} href={item.href} className="block rounded-2xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
-                  {item.label}
+                  {t(item.labelKey as TranslationKey)}
                 </Link>
               ))}
             </nav>
@@ -156,13 +158,13 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
 
         <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-4">
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-950">Status</p>
+            <p className="text-sm font-semibold text-slate-950">{t('app.status')}</p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Bransch, objekt, uppdrag, resurser, planering och operationsvy är aktiva.
+              {t('app.statusDescription')}
             </p>
             <form action="/api/logout" method="post" className="mt-4">
               <button className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
-                Logga ut
+                {t('app.logout')}
               </button>
             </form>
           </div>
@@ -189,7 +191,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
           <nav className="flex gap-2 overflow-x-auto pb-1 coordiqo-scrollbar">
             {[...primaryNav, ...secondaryNav, ...(isPlatformAdmin ? platformNav : []), ...settingsNav].map((item) => (
               <Link key={item.href} href={item.href} className="shrink-0 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
-                {item.label}
+                {t(item.labelKey as TranslationKey)}
               </Link>
             ))}
           </nav>
@@ -206,7 +208,7 @@ export function AppShell({ auth, title, subtitle, children, actions }: AppShellP
             </div>
           ) : null}
           <form action="/api/logout" method="post" className="mt-2">
-            <button className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Logga ut</button>
+            <button className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">{t('app.logout')}</button>
           </form>
         </div>
 
