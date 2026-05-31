@@ -58,6 +58,7 @@ export const sv = {
   'nav.audit': 'Auditlogg',
   'nav.notifications': 'Notiser',
   'nav.admin': 'Superadmin',
+  'nav.demoRequests': 'Demoansökningar',
   'nav.companies': 'Bolag',
   'nav.accessRequests': 'Ansökningar',
 

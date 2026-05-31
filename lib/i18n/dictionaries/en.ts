@@ -58,6 +58,7 @@ export const en = {
   'nav.audit': 'Audit log',
   'nav.notifications': 'Notifications',
   'nav.admin': 'Superadmin',
+  'nav.demoRequests': 'Demo requests',
   'nav.companies': 'Companies',
   'nav.accessRequests': 'Requests',
 

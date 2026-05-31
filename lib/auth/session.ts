@@ -31,8 +31,39 @@ export type AuthContext = {
   email: string | null
   profileName: string | null
   platformRole: PlatformRole
+  mustChangePassword: boolean
   membership: AuthCompanyMembership | null
   memberships: AuthCompanyMembership[]
+}
+
+type MembershipRow = {
+  id: string
+  company_id: string
+  role: string
+  is_default: boolean
+  created_at: string
+}
+
+type CompanyRow = {
+  id: string
+  name: string | null
+  slug: string | null
+  status: string
+  lifecycle_status?: string | null
+  industry_type: string | null
+  operational_model: string | null
+  language_code?: string | null
+}
+
+type CompanySettingsRow = {
+  company_id: string
+  active_modules: string[] | null
+  ui_label_set: string | null
+  locale?: string | null
+  timezone?: string | null
+  currency?: string | null
+  date_format?: string | null
+  time_format?: string | null
 }
 
 export async function requireAuth(): Promise<AuthContext> {
@@ -49,7 +80,7 @@ export async function requireAuth(): Promise<AuthContext> {
   const [{ data: profile }, { data: memberships }] = await Promise.all([
     supabaseAdmin
       .from('profiles')
-      .select('platform_role, full_name')
+      .select('platform_role, full_name, must_change_password')
       .eq('id', user.id)
       .maybeSingle(),
     supabaseAdmin
@@ -62,7 +93,7 @@ export async function requireAuth(): Promise<AuthContext> {
       .order('created_at', { ascending: true }),
   ])
 
-  const membershipRows = memberships ?? []
+  const membershipRows = (memberships ?? []) as MembershipRow[]
   const companyIds = membershipRows.map((membership) => membership.company_id).filter(Boolean)
 
   const [{ data: companies }, { data: settingsRows }] = companyIds.length
@@ -78,11 +109,11 @@ export async function requireAuth(): Promise<AuthContext> {
       ])
     : [{ data: [] }, { data: [] }]
 
-  const companyById = new Map((companies ?? []).map((company: any) => [company.id, company]))
-  const settingsByCompanyId = new Map((settingsRows ?? []).map((settings: any) => [settings.company_id, settings]))
+  const companyById = new Map(((companies ?? []) as CompanyRow[]).map((company) => [company.id, company]))
+  const settingsByCompanyId = new Map(((settingsRows ?? []) as CompanySettingsRow[]).map((settings) => [settings.company_id, settings]))
 
   const mappedMemberships = membershipRows
-    .map((membershipRecord: any) => {
+    .map((membershipRecord) => {
       const companyRecord = companyById.get(membershipRecord.company_id)
       if (!companyRecord || companyRecord.status !== 'active') return null
       if ((companyRecord.lifecycle_status ?? 'active') !== 'active') return null
@@ -127,6 +158,7 @@ export async function requireAuth(): Promise<AuthContext> {
     email: user.email ?? null,
     profileName: profile?.full_name ?? null,
     platformRole: (profile?.platform_role ?? null) as PlatformRole,
+    mustChangePassword: Boolean(profile?.must_change_password),
     membership: mappedMemberships[0] ?? null,
     memberships: mappedMemberships,
   }
