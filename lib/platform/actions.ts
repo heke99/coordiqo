@@ -16,6 +16,7 @@ import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResou
 import { logAuditEvent } from '@/lib/platform/audit'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
 import { allCompanyCoreModules, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
+import { normalizeLocale } from '@/lib/i18n/config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function value(formData: FormData, key: string) {
@@ -612,6 +613,46 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
 
   await audit(auth.membership!.companyId, auth.userId, 'update', 'industry_runtime_config', auth.membership!.companyId, { industryType, operationalModel })
   revalidatePath('/settings/industry')
+  revalidatePath('/settings')
+  revalidatePath('/dashboard')
+}
+
+export async function updateCompanyLocalizationSettingsAction(formData: FormData) {
+  const auth = await requireMembership('company_admin', 'att uppdatera språk och regionala inställningar')
+  const locale = normalizeLocale(value(formData, 'locale'))
+  const timezone = value(formData, 'timezone') ?? 'Europe/Stockholm'
+  const currency = (value(formData, 'currency') ?? 'SEK').toUpperCase()
+  const dateFormat = value(formData, 'date_format') ?? 'yyyy-MM-dd'
+  const timeFormat = value(formData, 'time_format') === '12h' ? '12h' : '24h'
+
+  const { error: settingsError } = await supabaseAdmin.from('company_settings').upsert({
+    company_id: auth.membership!.companyId,
+    locale,
+    timezone,
+    currency,
+    date_format: dateFormat,
+    time_format: timeFormat,
+  }, { onConflict: 'company_id' })
+  if (settingsError) throw new Error(settingsError.message)
+
+  const { error: companyError } = await supabaseAdmin
+    .from('companies')
+    .update({
+      language_code: locale,
+      timezone,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', auth.membership!.companyId)
+  if (companyError) throw new Error(companyError.message)
+
+  await audit(auth.membership!.companyId, auth.userId, 'localization_updated', 'company_settings', auth.membership!.companyId, {
+    locale,
+    timezone,
+    currency,
+    dateFormat,
+    timeFormat,
+  })
+  revalidatePath('/', 'layout')
   revalidatePath('/settings')
   revalidatePath('/dashboard')
 }
@@ -3297,10 +3338,13 @@ export async function switchActiveCompanyAction(formData: FormData) {
 }
 
 export async function createCompanyWorkspaceAction(formData: FormData) {
-  const auth = await requireAuth()
+  const auth = await requirePlatformAdmin('att skapa bolag')
   const name = value(formData, 'name')
   const industryType = value(formData, 'industry_type') ?? 'other'
   const operationalModel = value(formData, 'operational_model') ?? 'case_based'
+  const locale = normalizeLocale(value(formData, 'locale'))
+  const timezone = value(formData, 'timezone') ?? 'Europe/Stockholm'
+  const currency = (value(formData, 'currency') ?? 'SEK').toUpperCase()
   if (!name) throw new Error('Företagsnamn krävs.')
 
   const slugBase = name.toLowerCase().trim().replace(/å/g, 'a').replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -3308,7 +3352,7 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
 
   const { data: company, error } = await supabaseAdmin
     .from('companies')
-    .insert({ name, slug, status: 'active', industry_type: industryType, operational_model: operationalModel })
+    .insert({ name, slug, status: 'active', lifecycle_status: 'active', industry_type: industryType, operational_model: operationalModel, timezone, language_code: locale, approved_by: auth.userId, approved_at: new Date().toISOString() })
     .select('id')
     .single()
   if (error) throw new Error(error.message)
@@ -3321,6 +3365,9 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
     company_id: company.id,
     active_modules: activeModules,
     ui_label_set: industryType,
+    locale,
+    timezone,
+    currency,
   })
 
   await supabaseAdmin.from('industry_runtime_configs').upsert({
@@ -3359,7 +3406,7 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
   }
 
   await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: company.id }).throwOnError()
-  await audit(company.id, auth.userId, 'create', 'company_workspace', company.id, { name, industryType, operationalModel })
+  await audit(company.id, auth.userId, 'create', 'company_workspace', company.id, { name, industryType, operationalModel, locale })
   revalidatePath('/', 'layout')
   redirect('/dashboard')
 }
@@ -3369,11 +3416,16 @@ export async function createCompanyAccessRequestAction(formData: FormData) {
   const companyName = value(formData, 'company_name')
   const message = value(formData, 'message')
   const requestType = value(formData, 'request_type') ?? 'join_existing'
+  const industryType = value(formData, 'industry_type')
+  const operationalModel = value(formData, 'operational_model')
+  const locale = normalizeLocale(value(formData, 'locale'))
+  const timezone = value(formData, 'timezone') ?? 'Europe/Stockholm'
+  const currency = (value(formData, 'currency') ?? 'SEK').toUpperCase()
   if (!companyName) throw new Error('Företagsnamn krävs.')
 
   const { data, error } = await supabaseAdmin
     .from('company_access_requests')
-    .insert({ requester_user_id: auth.userId, requester_email: auth.email, company_name: companyName, request_type: requestType, message, status: 'pending' })
+    .insert({ requester_user_id: auth.userId, requester_email: auth.email, company_name: companyName, request_type: requestType, message, status: 'pending', industry_type: industryType, operational_model: operationalModel, locale, timezone, currency, first_admin_email: auth.email })
     .select('id')
     .single()
   if (error) throw new Error(error.message)
@@ -4872,10 +4924,27 @@ export async function reviewCompanyAccessRequestAction(formData: FormData) {
     if (!companyId) {
       const slugBase = String(request.company_name ?? 'company').toLowerCase().trim().replace(/å/g, 'a').replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'company'
       const slug = `${slugBase}-${Math.random().toString(36).slice(2, 7)}`
-      const { data: company, error: companyError } = await supabaseAdmin.from('companies').insert({ name: request.company_name, slug, status: 'active', lifecycle_status: 'active', industry_type: 'other', operational_model: 'case_based', approved_by: auth.userId, approved_at: new Date().toISOString() }).select('id').single()
+      const industryType = request.industry_type ?? 'other'
+      const operationalModel = request.operational_model ?? 'case_based'
+      const locale = normalizeLocale(request.locale)
+      const timezone = request.timezone ?? 'Europe/Stockholm'
+      const currency = (request.currency ?? 'SEK').toUpperCase()
+      const { data: company, error: companyError } = await supabaseAdmin.from('companies').insert({
+        name: request.company_name,
+        slug,
+        org_number: request.metadata?.org_number ?? request.message ?? null,
+        status: 'active',
+        lifecycle_status: 'active',
+        industry_type: industryType,
+        operational_model: operationalModel,
+        timezone,
+        language_code: locale,
+        approved_by: auth.userId,
+        approved_at: new Date().toISOString(),
+      }).select('id').single()
       if (companyError) throw new Error(companyError.message)
       companyId = company.id
-      await supabaseAdmin.from('company_settings').insert({ company_id: companyId, active_modules: allCompanyCoreModules(), ui_label_set: 'other' })
+      await supabaseAdmin.from('company_settings').insert({ company_id: companyId, active_modules: allCompanyCoreModules(), ui_label_set: industryType, locale, timezone, currency })
       await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: companyId }).throwOnError()
     }
 

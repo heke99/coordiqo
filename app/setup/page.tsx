@@ -10,6 +10,7 @@ type SetupFormState = {
   orgNumber: string
   industryType: string
   operationalModel: string
+  locale: string
   timezone: string
   defaultTeamName: string
 }
@@ -46,9 +47,7 @@ function friendlyError(message: string) {
   const normalized = message.toLowerCase()
 
   if (normalized.includes('not authenticated')) return 'Du måste vara inloggad för att skapa ditt företag.'
-  if (normalized.includes('already has an active company membership')) {
-    return 'Det här kontot har redan en aktiv företagstillhörighet.'
-  }
+  if (normalized.includes('already has an active company membership')) return 'Det här kontot har redan en aktiv företagstillhörighet.'
   if (normalized.includes('company name is required')) return 'Företagsnamn är obligatoriskt.'
 
   return message
@@ -59,6 +58,7 @@ export default function SetupPage() {
   const supabase = useMemo(() => createClient(), [])
   const [checking, setChecking] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [form, setForm] = useState<SetupFormState>({
@@ -66,6 +66,7 @@ export default function SetupPage() {
     orgNumber: '',
     industryType: 'property',
     operationalModel: 'object_based',
+    locale: 'sv',
     timezone: 'Europe/Stockholm',
     defaultTeamName: 'Huvudteam',
   })
@@ -112,24 +113,6 @@ export default function SetupPage() {
     }
   }, [router, supabase])
 
-  async function waitForMembership(userId: string) {
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      const { data } = await supabase
-        .from('company_memberships')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .limit(1)
-        .maybeSingle()
-
-      if (data?.id) return true
-
-      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
-    }
-
-    return false
-  }
-
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoading(true)
@@ -152,6 +135,7 @@ export default function SetupPage() {
       p_operational_model: form.operationalModel,
       p_timezone: form.timezone,
       p_default_team_name: form.defaultTeamName,
+      p_locale: form.locale,
     })
 
     if (error) {
@@ -160,15 +144,8 @@ export default function SetupPage() {
       return
     }
 
-    const membershipReady = await waitForMembership(user.id)
     setLoading(false)
-
-    if (!membershipReady) {
-      setError('Företaget skapades, men medlemskapet blev inte synligt direkt. Ladda om sidan och prova igen.')
-      return
-    }
-
-    window.location.replace('/dashboard')
+    setSubmitted(true)
   }
 
   if (checking) {
@@ -185,6 +162,23 @@ export default function SetupPage() {
     )
   }
 
+  if (submitted) {
+    return (
+      <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
+        <div className="coordiqo-shell flex min-h-[calc(100vh-3rem)] items-center justify-center">
+          <section className="coordiqo-card w-full max-w-xl p-8 text-center">
+            <div className="coordiqo-badge coordiqo-badge--success">Nästa steg</div>
+            <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950">Ansökan skickad</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              En superadmin granskar uppgifterna, skapar bolaget och aktiverar första company admin. Du får åtkomst när miljön är godkänd.
+            </p>
+            <a href="/login" className="mt-6 inline-flex rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Till inloggning</a>
+          </section>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
       <div className="coordiqo-shell grid min-h-[calc(100vh-3rem)] gap-6 lg:grid-cols-[0.95fr_1.05fr]">
@@ -193,21 +187,20 @@ export default function SetupPage() {
             <div className="coordiqo-badge coordiqo-badge--success">Kom igång</div>
             <div className="space-y-3">
               <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                Skapa din första Coordiqo-miljö
+                Ansök om Coordiqo-miljö
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
-                Nästa steg är att skapa företaget som ska använda plattformen. När det är klart får du en egen tenant,
-                grundinställningar och ditt första team direkt. Den operativa modellen är bara huvudfokus för första vyn. Hela systemet, alla moduler och alla objektflöden finns kvar och kan användas efter onboarding.
+                Superadmin skapar och aktiverar bolaget efter granskning. Det gör att tenant, roller, moduler, språk och första company admin blir kontrollerade från start.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                <p className="text-sm font-semibold text-slate-900">Det som skapas nu</p>
+                <p className="text-sm font-semibold text-slate-900">Det som skickas nu</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  <li>• Företag och företagsinställningar</li>
-                  <li>• Aktiv company admin-tillhörighet</li>
-                  <li>• Huvudteam för första planeringen</li>
+                  <li>• Bolagsansökan till superadmin</li>
+                  <li>• Förslag på bransch, modell och språk</li>
+                  <li>• Uppgifter för första company admin</li>
                 </ul>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
@@ -229,7 +222,7 @@ export default function SetupPage() {
 
         <section className="coordiqo-card p-5 sm:p-7">
           <div className="mb-6">
-            <p className="text-sm font-medium text-slate-500">Företagsuppsättning</p>
+            <p className="text-sm font-medium text-slate-500">Superadmin-granskning</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-950">Grunduppgifter</h2>
           </div>
 
@@ -272,6 +265,19 @@ export default function SetupPage() {
                   onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))}
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Standardspråk</label>
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
+                value={form.locale}
+                onChange={(e) => setForm((prev) => ({ ...prev, locale: e.target.value }))}
+              >
+                <option value="sv">Svenska</option>
+                <option value="en">English</option>
+              </select>
+              <p className="mt-1.5 text-xs leading-5 text-slate-500">Superadmin kan ändra språket innan bolaget aktiveras.</p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -322,7 +328,7 @@ export default function SetupPage() {
               disabled={loading}
               className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? 'Skapar företag...' : 'Skapa företag och fortsätt'}
+              {loading ? 'Skickar ansökan...' : 'Skicka ansökan'}
             </button>
           </form>
         </section>
