@@ -12,6 +12,14 @@ import { createTranslator } from '@/lib/i18n/labels'
 import { updateCompanyLocalizationSettingsAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
+type CompanySettingsRow = {
+  locale: string | null
+  timezone: string | null
+  currency: string | null
+  date_format: string | null
+  time_format: string | null
+}
+
 const settingsSections = [
   {
     href: '/settings/industry',
@@ -84,7 +92,7 @@ export default async function SettingsPage() {
     .select('locale, timezone, currency, date_format, time_format')
     .eq('company_id', auth.membership.companyId)
     .maybeSingle()
-  const settings = companySettings as any
+  const settings = companySettings as CompanySettingsRow | null
 
   return (
     <AppShell
