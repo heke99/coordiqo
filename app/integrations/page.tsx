@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { createAiDecisionSupportRunAction, saveIntegrationSettingAction } from '@/lib/engines/actions'
+import { createAiDecisionSupportRunAction, saveIntegrationSettingAction, syncNotionKnowledgeAction } from '@/lib/engines/actions'
 import { getAiProviderConfig, isLangflowConfigured } from '@/lib/ai/orchestration'
 import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
 import { messagingReadiness } from '@/lib/messaging/providers'
@@ -97,6 +97,14 @@ export default async function IntegrationsPage() {
                 </Field>
                 <Field label="Fråga eller kontext"><input name="prompt" className={inputClassName} /></Field>
                 <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Skapa beslutsstöd</button>
+              </form>
+            </section>
+
+            <section className="coordiqo-card p-5">
+              <h2 className="text-lg font-semibold text-slate-950">Kunskapskälla</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Synka dokument från konfigurerad kunskapskälla så AI kan ge svar med bättre verksamhetskontext.</p>
+              <form action={syncNotionKnowledgeAction} className="mt-4">
+                <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Synka kunskapskälla</button>
               </form>
             </section>
 

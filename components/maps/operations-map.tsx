@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { formatCoordinate } from '@/lib/routing/coordinates'
 import { formatDistance, formatDuration } from '@/lib/routing/route-metrics'
 import type { RouteMetricSummary, RoutingWaypoint } from '@/lib/routing/types'
+import { MapLibreOperationsMap } from '@/components/maps/maplibre-operations-map'
 
 type OperationsMapRoute = {
   key: string
@@ -17,6 +18,7 @@ type OperationsMapProps = {
   unassignedWaypoints?: RoutingWaypoint[]
   providerLabel: string
   providerDetail: string
+  mapStyleUrl?: string | null
 }
 
 function boundsFor(points: RoutingWaypoint[]) {
@@ -40,7 +42,7 @@ function project(point: RoutingWaypoint, bounds: NonNullable<ReturnType<typeof b
   return { x, y }
 }
 
-export function OperationsMap({ routes, unassignedWaypoints = [], providerLabel, providerDetail }: OperationsMapProps) {
+export function OperationsMap({ routes, unassignedWaypoints = [], providerLabel, providerDetail, mapStyleUrl }: OperationsMapProps) {
   const allRoutePoints = routes.flatMap((route) => route.waypoints)
   const allPoints = [...allRoutePoints, ...unassignedWaypoints]
   const bounds = boundsFor(allPoints)
@@ -65,8 +67,8 @@ export function OperationsMap({ routes, unassignedWaypoints = [], providerLabel,
 
       <div className="grid gap-0 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="relative min-h-[360px] overflow-hidden bg-slate-100">
-          <div className="absolute inset-0 opacity-80" style={{ backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
-          {bounds ? (
+          {mapStyleUrl && allPoints.length ? <MapLibreOperationsMap waypoints={allPoints} styleUrl={mapStyleUrl} /> : <div className="absolute inset-0 opacity-80" style={{ backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)', backgroundSize: '28px 28px' }} />}
+          {bounds && !mapStyleUrl ? (
             <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" role="img" aria-label="Förenklad operationskarta med rutter och stopp">
               {routes.map((route, routeIndex) => {
                 const points = route.waypoints.map((point) => project(point, bounds))

@@ -43,6 +43,20 @@ export default async function PilotReadinessPage() {
     { label: 'AI beslutsstöd', ok: Number(row?.ai_runs ?? 0) > 0, href: '/integrations' },
     { label: 'Faktureringsunderlag', ok: Number(billing ?? 0) > 0, href: '/reports' },
   ]
+  const testScenarios = [
+    'Demoansökan sparas och intern notifiering skickas',
+    'Plattformsadministratör skapar bolag från kvalificerad lead',
+    'Plattformsadministratör skapar företagsadministratör med tillfälligt lösenord',
+    'Första inloggningen kräver lösenordsbyte innan dashboard',
+    'Onboarding slutförs och dashboard öppnas',
+    'Uppdrag skapas, tilldelas och regelkontrolleras',
+    'Ruttoptimering körs och ej planerade jobb granskas',
+    'Uppdrag slutförs från mobil vy',
+    'Avvikelse skapas och stängs',
+    'AI-beslutsstöd skapas utan att fatta beslut automatiskt',
+    'Kund-SMS skickas eller köas',
+    'Tenant-isolering verifieras mellan två bolag',
+  ]
   const ready = checks.filter((check) => check.ok).length
 
   return (
@@ -66,6 +80,17 @@ export default async function PilotReadinessPage() {
               </div>
             </Link>
           ))}
+        </section>
+
+        <section className="coordiqo-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">Testscenarier före skarp drift</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {testScenarios.map((scenario) => (
+              <div key={scenario} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-950">
+                {scenario}
+              </div>
+            ))}
+          </div>
         </section>
       </div>
     </AppShell>

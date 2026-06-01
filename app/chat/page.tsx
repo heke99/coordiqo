@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { createChatChannelAction, createChatMessageAction } from '@/lib/engines/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { ChatAutoRefresh } from './auto-refresh'
 
 type ChannelRow = {
   id: string
@@ -46,6 +47,7 @@ export default async function ChatPage() {
       subtitle="Intern chatt kopplad till operations, projekt, rutter, avvikelser och AI-beslutsstöd."
       actions={<Link href="/deviations" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Avvikelser</Link>}
     >
+      <ChatAutoRefresh />
       <div className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
         <aside className="space-y-5">
           <section className="coordiqo-card p-5">

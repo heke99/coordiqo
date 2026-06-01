@@ -8,7 +8,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireAuth } from '@/lib/auth/session'
 import { getIndustryPreset } from '@/lib/industry/config'
-import { buildDailyOperationsSummary, buildTaskWaypoint, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime } from '@/lib/operations/operations-engine'
+import { buildDailyOperationsSummary, buildTaskWaypoint, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime, type DailyAssignmentRow, type DailyDeviationRow, type DailyResourceAssignmentRow, type DailyTaskRow } from '@/lib/operations/operations-engine'
+import type { RoutingWaypoint } from '@/lib/routing/types'
+import { enrichRoutesWithGraphHopper } from '@/lib/routing/graphhopper'
 import { getRoutingProviderEnvironment } from '@/lib/routing/providers'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -82,15 +84,17 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       .limit(100),
   ])
 
-  const assignmentRows = (assignments ?? []) as any[]
-  const taskRows = (tasks ?? []) as any[]
-  const resourceRows = (resourceAssignments ?? []) as any[]
-  const deviationRows = (deviations ?? []) as any[]
+  type ConflictRow = { id: string; conflict_type?: string | null; message?: string | null }
+  const assignmentRows = (assignments ?? []) as unknown as DailyAssignmentRow[]
+  const taskRows = (tasks ?? []) as unknown as DailyTaskRow[]
+  const resourceRows = (resourceAssignments ?? []) as unknown as DailyResourceAssignmentRow[]
+  const deviationRows = (deviations ?? []) as unknown as DailyDeviationRow[]
+  const conflictRows = (conflicts ?? []) as unknown as ConflictRow[]
   const summary = buildDailyOperationsSummary({ assignments: assignmentRows, tasks: taskRows, resourceAssignments: resourceRows, deviations: deviationRows })
-  const routes = groupAssignmentsByRoute(assignmentRows as any)
+  const routes = await enrichRoutesWithGraphHopper(groupAssignmentsByRoute(assignmentRows))
   const routingProvider = getRoutingProviderEnvironment()
   const unassignedTasks = taskRows.filter((task) => !assignmentRows.some((assignment) => assignment.task_id === task.id) && !['completed', 'cancelled', 'archived'].includes(task.status ?? '')).sort((a, b) => getTaskSortTime(a).localeCompare(getTaskSortTime(b)))
-  const unassignedWaypoints = unassignedTasks.map((task) => buildTaskWaypoint(task as any)).filter(Boolean)
+  const unassignedWaypoints = unassignedTasks.map((task) => buildTaskWaypoint(task)).filter(Boolean) as RoutingWaypoint[]
 
   return (
     <AppShell
@@ -118,7 +122,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       </section>
 
       <div className="mt-5">
-        <OperationsMap routes={routes} unassignedWaypoints={unassignedWaypoints as any} providerLabel={routingProvider.label} providerDetail={routingProvider.detail} />
+        <OperationsMap routes={routes} unassignedWaypoints={unassignedWaypoints} providerLabel={routingProvider.label} providerDetail={routingProvider.detail} mapStyleUrl={routingProvider.styleUrl} />
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
@@ -135,7 +139,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
                   <StatusBadge status={route.key.startsWith('staff') ? preset.terminology.staff : 'Team'} />
                 </div>
                 <div className="mt-4 space-y-2">
-                  {route.rows.map((assignment: any, index: number) => (
+                  {route.rows.map((assignment, index: number) => (
                     <Link href={`/tasks/${assignment.task_id}`} key={assignment.id} className="block rounded-2xl border border-slate-100 bg-slate-50 p-3 transition hover:bg-white">
                       <div className="flex gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">{index + 1}</div>
@@ -157,7 +161,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Resursstatus idag</h2>
             <div className="mt-4 space-y-3">
-              {resourceRows.length ? resourceRows.slice(0, 10).map((row: any) => (
+              {resourceRows.length ? resourceRows.slice(0, 10).map((row) => (
                 <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-950">{row.resource_assets?.name ?? 'Resurs'}</p><p className="mt-1 text-xs text-slate-500">{row.staff_profiles?.full_name ?? row.teams?.name ?? 'Ej ansvarig'} · {row.tasks?.title ?? 'Extra resurs'}</p></div><StatusBadge status={row.status ?? 'planned'} /></div>
                   {row.actual_resource_assets?.name && row.actual_resource_assets.name !== row.resource_assets?.name ? <p className="mt-2 text-xs font-semibold text-amber-700">Ersatt med {row.actual_resource_assets.name}</p> : null}
@@ -169,9 +173,9 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
           <section className="coordiqo-card p-5">
             <h2 className="text-lg font-semibold text-slate-950">Avvikelser och konflikter</h2>
             <div className="mt-4 space-y-3">
-              {deviationRows.slice(0, 5).map((deviation: any) => <div key={deviation.id} className="rounded-2xl border border-red-100 bg-red-50 p-4"><p className="text-sm font-semibold text-red-900">{deviation.resource_assets?.name ?? 'Resurs'} · {deviation.deviation_type ?? 'avvikelse'}</p><p className="mt-1 text-xs text-red-700">{deviation.staff_profiles?.full_name ?? 'Okänd'} · {deviation.description ?? 'Ingen kommentar'}</p></div>)}
-              {(conflicts ?? []).slice(0, 5).map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">{conflict.conflict_type}</p><p className="mt-1 text-xs text-amber-800">{conflict.message}</p></div>)}
-              {!deviationRows.length && !(conflicts ?? []).length ? <p className="text-sm text-slate-600">Inga öppna avvikelser eller konflikter.</p> : null}
+              {deviationRows.slice(0, 5).map((deviation) => <div key={deviation.id} className="rounded-2xl border border-red-100 bg-red-50 p-4"><p className="text-sm font-semibold text-red-900">{deviation.resource_assets?.name ?? 'Resurs'} · {deviation.reason_code ?? 'avvikelse'}</p><p className="mt-1 text-xs text-red-700">{deviation.staff_profiles?.full_name ?? 'Okänd'} · {deviation.comment ?? 'Ingen kommentar'}</p></div>)}
+              {conflictRows.slice(0, 5).map((conflict) => <div key={conflict.id} className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">{conflict.conflict_type}</p><p className="mt-1 text-xs text-amber-800">{conflict.message}</p></div>)}
+              {!deviationRows.length && !conflictRows.length ? <p className="text-sm text-slate-600">Inga öppna avvikelser eller konflikter.</p> : null}
             </div>
           </section>
         </aside>
@@ -180,7 +184,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       <section className="coordiqo-card mt-5 p-5">
         <h2 className="text-lg font-semibold text-slate-950">Oplanerade {preset.terminology.tasks.toLowerCase()}</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {unassignedTasks.length ? unassignedTasks.slice(0, 12).map((task: any) => (
+          {unassignedTasks.length ? unassignedTasks.slice(0, 12).map((task) => (
             <Link key={task.id} href={`/tasks/${task.id}`} className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:bg-slate-50">
               <div className="flex items-start justify-between gap-3"><p className="text-sm font-semibold text-slate-950">{task.title}</p><StatusBadge status={task.priority ?? 'normal'} /></div>
               <p className="mt-2 text-xs text-slate-500">{task.task_types?.name ?? preset.terminology.task} · {formatTime(task.scheduled_start ?? task.time_window_start)} · {getStopLabel(task)}</p>
