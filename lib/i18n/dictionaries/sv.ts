@@ -45,6 +45,7 @@ export const sv = {
   'nav.shiftPresets': 'Passpresets',
   'nav.workOrders': 'Arbetsorder',
   'nav.deviations': 'Avvikelser',
+  'nav.messages': 'Kundmeddelanden',
   'nav.reports': 'Rapporter och faktureringsunderlag',
   'nav.integrations': 'AI och integrationer',
   'nav.pilot': 'Driftberedskap',

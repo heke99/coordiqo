@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation'
 import { assertCompanyPermission } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { buildAiPromptContext, callLangflow } from '@/lib/ai/orchestration'
+import { syncNotionKnowledgeSource } from '@/lib/knowledge/notion-sync'
+import { sendSmsWithTwilio } from '@/lib/messaging/twilio'
 import { createFallbackOptimization, runVroomOptimization, type OptimizationJob, type OptimizationVehicle } from '@/lib/optimization/vroom'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -643,5 +645,63 @@ export async function saveIntegrationSettingAction(formData: FormData) {
   if (error) throw new Error(error.message)
   await audit(auth.membership!.companyId, auth.userId, 'integration.setting_saved', 'integration_setting', data.id, { provider })
   revalidatePath('/integrations')
+}
+
+export async function syncNotionKnowledgeAction() {
+  const auth = await requireCompanyRole('operations_manager', 'att synka kunskapskälla')
+  const result = await syncNotionKnowledgeSource({
+    companyId: auth.membership!.companyId,
+    actorUserId: auth.userId,
+    locale: auth.membership!.locale,
+  })
+  await audit(auth.membership!.companyId, auth.userId, 'knowledge.notion_sync', 'knowledge_source', auth.membership!.companyId, result)
+  revalidatePath('/integrations')
+}
+
+export async function createExternalSmsMessageAction(formData: FormData) {
+  const auth = await requireCompanyRole('planner', 'att skicka kundmeddelande')
+  const companyId = auth.membership!.companyId
+  const to = value(formData, 'to')
+  const body = value(formData, 'body')
+  if (!to || !body) throw new Error('Telefonnummer och meddelande krävs.')
+
+  const { data: thread, error: threadError } = await supabaseAdmin.from('message_threads').insert({
+    company_id: companyId,
+    channel_type: 'sms',
+    subject: value(formData, 'subject') ?? 'Kundmeddelande',
+    customer_label: to,
+    status: 'open',
+    created_by: auth.userId,
+  }).select('id').single()
+  if (threadError) throw new Error(threadError.message)
+
+  const delivery = await sendSmsWithTwilio({ to, body })
+  const { data: message, error } = await supabaseAdmin.from('external_messages').insert({
+    company_id: companyId,
+    message_thread_id: thread.id,
+    direction: 'outbound',
+    channel_type: 'sms',
+    to_address: to,
+    body,
+    status: delivery.status,
+    provider_message_id: delivery.providerMessageId,
+    requires_approval: false,
+    approved_by: auth.userId,
+    approved_at: new Date().toISOString(),
+    created_by: auth.userId,
+    sent_at: delivery.status === 'sent' ? new Date().toISOString() : null,
+    metadata: { provider: delivery.provider, detail: delivery.detail },
+  }).select('id').single()
+  if (error) throw new Error(error.message)
+
+  await supabaseAdmin.from('message_delivery_logs').insert({
+    company_id: companyId,
+    external_message_id: message.id,
+    provider: delivery.provider,
+    status: delivery.status,
+    provider_response: delivery.providerResponse ?? {},
+  })
+  await audit(companyId, auth.userId, 'message.sms_created', 'external_message', message.id, { to, status: delivery.status })
+  revalidatePath('/messages')
 }
 

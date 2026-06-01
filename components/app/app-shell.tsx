@@ -29,6 +29,7 @@ const secondaryNav = [
   { href: '/availability/presets', labelKey: 'nav.shiftPresets' },
   { href: '/work-orders', labelKey: 'nav.workOrders' },
   { href: '/deviations', labelKey: 'nav.deviations' },
+  { href: '/messages', labelKey: 'nav.messages' },
   { href: '/reports', labelKey: 'nav.reports' },
   { href: '/integrations', labelKey: 'nav.integrations' },
   { href: '/pilot', labelKey: 'nav.pilot' },

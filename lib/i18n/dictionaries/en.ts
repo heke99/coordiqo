@@ -45,6 +45,7 @@ export const en = {
   'nav.shiftPresets': 'Shift presets',
   'nav.workOrders': 'Work orders',
   'nav.deviations': 'Deviations',
+  'nav.messages': 'Customer messages',
   'nav.reports': 'Reports and billing',
   'nav.integrations': 'AI and integrations',
   'nav.pilot': 'Operational readiness',
