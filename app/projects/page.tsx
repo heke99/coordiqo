@@ -46,7 +46,7 @@ export default async function ProjectsPage() {
       auth={auth}
       title="Projekt"
       subtitle="Skapa projekt från mallar, räkna tid/kostnad och skapa uppdrag som kan skickas till planeringsmotorn."
-      actions={<div className="flex gap-2"><Link href="/projects/templates" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Projektmallar</Link><Link href="/projects/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Nytt projekt</Link></div>}
+      actions={<div className="flex gap-2"><Link href="/projects/templates" className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800">Projektmallar</Link><Link href="/projects/wizard" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Starta projektguide</Link></div>}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_0.7fr]">
         <section className="space-y-4">
@@ -61,7 +61,7 @@ export default async function ProjectsPage() {
                 <div className="flex flex-wrap gap-2"><StatusBadge status={project.status} /><StatusBadge status={project.priority} /></div>
               </div>
             </Link>
-          )) : <EmptyState eyebrow="Projekt" title="Inga projekt ännu" description="Skapa ett projekt från en branschmall. Systemet räknar ut tid/kostnad från DB-regler och kan skapa uppdrag direkt." action={<Link href="/projects/new" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Skapa projekt</Link>} />}
+          )) : <EmptyState eyebrow="Projekt" title="Inga projekt ännu" description="Skapa ett projekt från en branschmall. Systemet räknar ut tid/kostnad från regler och kan skapa uppdrag direkt." action={<Link href="/projects/wizard" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Starta projektguide</Link>} />}
         </section>
 
         <aside className="space-y-5">

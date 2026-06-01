@@ -15,6 +15,7 @@ const steps = [
   ['industry_model', 'Industry model', 'Choose a starting model for templates and labels. It never locks the system.'],
   ['modules', 'Modules', 'Review active modules and decide what should be visible first.'],
   ['staff_team', 'Staff/team setup', 'Add initial teams, roles and staff structure.'],
+  ['import_data', 'Import data', 'Paste or upload staff, resources, customers, tasks or project lists from Excel/CSV.'],
   ['customers_objects', 'Customers/objects/patients setup', 'Prepare customer, object or patient records for operations.'],
   ['planning_defaults', 'Planning defaults', 'Review default rules, templates and planning assumptions.'],
   ['finish', 'Finish', 'Open the dashboard and continue configuration later.'],
@@ -70,6 +71,10 @@ export default async function OnboardingPage() {
             {['Industry model', 'Active modules', 'Planning templates', 'Project templates', 'Shift presets', 'Resource types', 'Labels/naming', 'Workflow rules', 'Language', 'AI/planning defaults'].map((item) => (
               <span key={item} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{item}</span>
             ))}
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link href="/import" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Importera grunddata</Link>
+            <Link href="/projects/wizard" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Starta projektguide</Link>
           </div>
           <form id="complete-onboarding" action={completeOnboardingAction} className="mt-6">
             <button disabled={!canComplete} className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">Finish onboarding</button>

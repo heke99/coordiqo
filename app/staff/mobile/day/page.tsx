@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { createDeviationAction, createMobileExecutionEventAction } from '@/lib/engines/actions'
+import { createDeviationAction, createMobileExecutionEventAction, saveMobileChecklistResponseAction } from '@/lib/engines/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -149,6 +149,23 @@ export default async function MobileDayPage() {
                   <input name="title" placeholder="Rapportera avvikelse" className="min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-xs" />
                   <button className="rounded-xl bg-amber-700 px-3 py-2 text-xs font-semibold text-white">Skicka</button>
                 </form>
+              </div>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-950">Snabb checklista</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[
+                    ['arrived', 'På plats'],
+                    ['work_done', 'Arbete utfört'],
+                    ['no_deviation', 'Ingen avvikelse'],
+                  ].map(([itemKey, label]) => (
+                    <form key={itemKey} action={saveMobileChecklistResponseAction}>
+                      <input type="hidden" name="task_id" value={assignment.task_id} />
+                      <input type="hidden" name="item_key" value={itemKey} />
+                      <input type="hidden" name="response_value" value="true" />
+                      <button className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">{label}</button>
+                    </form>
+                  ))}
+                </div>
               </div>
             </section>
           )

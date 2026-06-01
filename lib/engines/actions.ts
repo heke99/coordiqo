@@ -455,6 +455,49 @@ export async function createMobileExecutionEventAction(formData: FormData) {
   revalidatePath(`/tasks/${taskId}`)
 }
 
+export async function saveMobileChecklistResponseAction(formData: FormData) {
+  const auth = await requireCompanyRole('staff', 'att svara på checklista')
+  const companyId = auth.membership!.companyId
+  const taskId = value(formData, 'task_id')
+  const itemKey = value(formData, 'item_key')
+  if (!taskId || !itemKey) throw new Error('Uppdrag och checklistpunkt krävs.')
+  const { data: task } = await supabaseAdmin.from('tasks').select('id').eq('id', taskId).eq('company_id', companyId).maybeSingle()
+  if (!task) throw new Error('Uppdraget kunde inte hittas.')
+  const { data: staffProfile } = await supabaseAdmin.from('staff_profiles').select('id').eq('company_id', companyId).eq('membership_id', auth.membership!.membershipId).is('archived_at', null).maybeSingle()
+  const responseValue = formData.get('response_value') === 'on' ? true : value(formData, 'response_value') ?? true
+  const { error } = await supabaseAdmin.from('mobile_checklist_responses').insert({
+    company_id: companyId,
+    task_id: taskId,
+    staff_profile_id: staffProfile?.id ?? null,
+    checklist_key: value(formData, 'checklist_key') ?? 'default_task_completion',
+    item_key: itemKey,
+    response_value: responseValue,
+    answered_by: auth.userId,
+  })
+  if (error) throw new Error(error.message)
+  await audit(companyId, auth.userId, 'mobile.checklist_answered', 'task', taskId, { itemKey })
+  revalidatePath('/staff/mobile/day')
+}
+
+export async function decideAiSuggestionAction(formData: FormData) {
+  const auth = await requireCompanyRole('planner', 'att granska AI-förslag')
+  const id = value(formData, 'id')
+  const decision = value(formData, 'decision')
+  const reason = value(formData, 'reason')
+  if (!id || !decision) throw new Error('AI-förslag och beslut krävs.')
+  if (!['approved', 'rejected', 'ignored'].includes(decision)) throw new Error('Ogiltigt beslut.')
+  const { error } = await supabaseAdmin.from('ai_decision_logs').update({
+    human_decision: decision,
+    validation_status: decision,
+    decision_reason: reason,
+    decided_by: auth.userId,
+    decided_at: new Date().toISOString(),
+  }).eq('id', id).eq('company_id', auth.membership!.companyId)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'ai.suggestion_decided', 'ai_decision_log', id, { decision, reason })
+  revalidatePath('/ai/suggestions')
+}
+
 export async function createDeviationAction(formData: FormData) {
   const auth = await requireCompanyRole('staff', 'att rapportera avvikelse')
   const companyId = auth.membership!.companyId

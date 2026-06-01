@@ -19,6 +19,7 @@ const primaryNav = [
   { href: '/teams', labelKey: 'nav.teams', descriptionKey: 'nav.teams.description' },
   { href: '/projects', labelKey: 'nav.projects', descriptionKey: 'nav.projects.description' },
   { href: '/chat', labelKey: 'nav.chat', descriptionKey: 'nav.chat.description' },
+  { href: '/import', labelKey: 'nav.import', descriptionKey: 'nav.import.description' },
 ]
 
 const secondaryNav = [
@@ -31,6 +32,7 @@ const secondaryNav = [
   { href: '/deviations', labelKey: 'nav.deviations' },
   { href: '/messages', labelKey: 'nav.messages' },
   { href: '/reports', labelKey: 'nav.reports' },
+  { href: '/ai/suggestions', labelKey: 'nav.aiSuggestions' },
   { href: '/integrations', labelKey: 'nav.integrations' },
   { href: '/pilot', labelKey: 'nav.pilot' },
   { href: '/property', labelKey: 'nav.property' },
