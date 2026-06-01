@@ -498,6 +498,21 @@ export async function decideAiSuggestionAction(formData: FormData) {
   revalidatePath('/ai/suggestions')
 }
 
+export async function updateQaTestItemAction(formData: FormData) {
+  const auth = await requireCompanyRole('operations_manager', 'att uppdatera teststatus')
+  const id = value(formData, 'id')
+  const status = value(formData, 'status')
+  if (!id || !status) throw new Error('Testpunkt och status krävs.')
+  if (!['planned', 'passed', 'failed', 'skipped'].includes(status)) throw new Error('Ogiltig teststatus.')
+  const { error } = await supabaseAdmin.from('qa_test_items').update({
+    status,
+    evidence: value(formData, 'evidence'),
+  }).eq('id', id).or(`company_id.eq.${auth.membership!.companyId},company_id.is.null`)
+  if (error) throw new Error(error.message)
+  await audit(auth.membership!.companyId, auth.userId, 'qa.item_updated', 'qa_test_item', id, { status })
+  revalidatePath('/pilot')
+}
+
 export async function createDeviationAction(formData: FormData) {
   const auth = await requireCompanyRole('staff', 'att rapportera avvikelse')
   const companyId = auth.membership!.companyId

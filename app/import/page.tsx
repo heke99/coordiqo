@@ -3,23 +3,11 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
-import { Field, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { runPasteImportAction } from '@/lib/import/actions'
+import { undoImportRunAction } from '@/lib/import/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-
-const targets = [
-  { value: 'staff', label: 'Personal' },
-  { value: 'resources', label: 'Resurser' },
-  { value: 'entities', label: 'Kunder/objekt' },
-  { value: 'tasks', label: 'Uppdrag' },
-  { value: 'projects', label: 'Projekt' },
-]
-
-const sample = `full_name,email,phone,team,job_title
-Anna Andersson,anna@example.com,+46700000001,Malmö,Chaufför
-Ali Hassan,ali@example.com,+46700000002,Lund,Teamledare`
+import { ImportInputPanel } from './import-input-panel'
 
 type ImportRunRow = {
   id: string
@@ -40,6 +28,14 @@ type ImportItemRow = {
   error_message: string | null
 }
 
+const targets = [
+  { value: 'staff', label: 'Personal' },
+  { value: 'resources', label: 'Resurser' },
+  { value: 'entities', label: 'Kunder/objekt' },
+  { value: 'tasks', label: 'Uppdrag' },
+  { value: 'projects', label: 'Projekt' },
+]
+
 export default async function ImportPage() {
   const auth = await requireAuth()
   if (!auth.membership) return null
@@ -54,24 +50,7 @@ export default async function ImportPage() {
   return (
     <AppShell auth={auth} title="Importera data" subtitle="Flytta in personal, resurser, kunder/objekt, uppdrag och projekt från Excel, Sheets eller CSV.">
       <div className="grid gap-5 lg:grid-cols-[0.82fr_1.18fr]">
-        <section className="coordiqo-card p-5">
-          <h2 className="text-lg font-semibold text-slate-950">Klistra in eller ladda upp CSV</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Kopiera rader från Excel/Sheets med rubrikrad först. Systemet tolkar vanliga kolumnnamn och sparar felrader för korrigering.</p>
-          <form action={runPasteImportAction} className="mt-5 grid gap-4">
-            <Field label="Vad vill du importera?">
-              <select name="target" defaultValue="staff" className={selectClassName}>
-                {targets.map((target) => <option key={target.value} value={target.value}>{target.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Klistra in rader">
-              <textarea name="pasted_text" className={textareaClassName} defaultValue={sample} rows={9} />
-            </Field>
-            <Field label="Eller ladda upp CSV">
-              <input name="file" type="file" accept=".csv,text/csv,text/plain" className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900" />
-            </Field>
-            <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Validera och importera</button>
-          </form>
-        </section>
+        <ImportInputPanel />
 
         <section className="space-y-5">
           <div className="coordiqo-card p-5">
@@ -109,6 +88,12 @@ export default async function ImportPage() {
                     </div>
                     <p className="mt-3 text-sm text-slate-600">{run.rows_imported}/{run.rows_total} importerade · {run.rows_failed} fel</p>
                     {failedItems.length ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{failedItems.slice(0, 4).map((item) => <p key={item.id}>Rad {item.row_number}: {item.error_message}</p>)}</div> : null}
+                    {run.rows_imported > 0 ? (
+                      <form action={undoImportRunAction} className="mt-3">
+                        <input type="hidden" name="import_run_id" value={run.id} />
+                        <button className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Ångra import</button>
+                      </form>
+                    ) : null}
                   </div>
                 )
               }) : <p className="text-sm text-slate-600">Inga importer ännu.</p>}

@@ -294,3 +294,41 @@ export async function runPasteImportAction(formData: FormData) {
   revalidatePath('/import')
 }
 
+async function archiveImportedRows(companyId: string, importRunId: string, actorUserId: string) {
+  const archivedAt = new Date().toISOString()
+  await Promise.all([
+    supabaseAdmin.from('staff_profiles').update({ archived_at: archivedAt, status: 'inactive', updated_by: actorUserId }).eq('company_id', companyId).eq('import_run_id', importRunId).is('archived_at', null),
+    supabaseAdmin.from('resource_assets').update({ archived_at: archivedAt, status: 'archived', updated_by: actorUserId }).eq('company_id', companyId).eq('import_run_id', importRunId).is('archived_at', null),
+    supabaseAdmin.from('entities').update({ archived_at: archivedAt, status: 'archived', updated_by: actorUserId }).eq('company_id', companyId).eq('import_run_id', importRunId).is('archived_at', null),
+    supabaseAdmin.from('tasks').update({ archived_at: archivedAt, status: 'archived', updated_by: actorUserId }).eq('company_id', companyId).eq('import_run_id', importRunId).is('archived_at', null),
+    supabaseAdmin.from('projects').update({ archived_at: archivedAt, status: 'archived', updated_by: actorUserId }).eq('company_id', companyId).eq('import_run_id', importRunId).is('archived_at', null),
+  ])
+}
+
+export async function undoImportRunAction(formData: FormData) {
+  const auth = await requireImportAccess()
+  const importRunId = value(formData, 'import_run_id')
+  if (!importRunId) throw new Error('Import saknas.')
+  const companyId = auth.membership!.companyId
+  const { data: run } = await supabaseAdmin.from('import_runs').select('id, status').eq('company_id', companyId).eq('id', importRunId).maybeSingle()
+  if (!run) throw new Error('Importen kunde inte hittas.')
+
+  await archiveImportedRows(companyId, importRunId, auth.userId)
+  await supabaseAdmin.from('import_run_items').update({ status: 'undone', archived_at: new Date().toISOString() }).eq('company_id', companyId).eq('import_run_id', importRunId).eq('status', 'imported')
+  await supabaseAdmin.from('import_runs').update({
+    status: 'undone',
+    archived_at: new Date().toISOString(),
+    summary: { undoneBy: auth.userId, undoneAt: new Date().toISOString() },
+  }).eq('company_id', companyId).eq('id', importRunId)
+
+  await logAuditEvent({
+    companyId,
+    actorUserId: auth.userId,
+    action: 'import.undone',
+    entityType: 'import_run',
+    entityId: importRunId,
+    metadata: { source: 'import_center' },
+  })
+  revalidatePath('/import')
+}
+

@@ -167,6 +167,14 @@ export default async function MobileDayPage() {
                   ))}
                 </div>
               </div>
+              <form action={createMobileExecutionEventAction} className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <input type="hidden" name="task_id" value={assignment.task_id} />
+                <input type="hidden" name="task_assignment_id" value={assignment.id} />
+                <input type="hidden" name="event_type" value="field_note" />
+                <p className="text-sm font-semibold text-slate-950">Foto/signatur-notering</p>
+                <input name="notes" placeholder="Ex. foto taget, signatur mottagen av Anna" className="rounded-xl border border-slate-200 px-3 py-2 text-xs" />
+                <button className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Spara notering</button>
+              </form>
             </section>
           )
         }) : <EmptyState title="Inga uppdrag idag" description="När planeringen publiceras visas dagens uppdrag och kopplade resurser här." />}

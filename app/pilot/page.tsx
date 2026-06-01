@@ -3,7 +3,9 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
+import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { updateQaTestItemAction } from '@/lib/engines/actions'
 import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -18,19 +20,29 @@ type SaasReadinessRow = {
   ai_runs: number
 }
 
+type QaTestItemRow = {
+  id: string
+  title: string
+  description: string | null
+  status: string
+  evidence: string | null
+}
+
 export default async function PilotReadinessPage() {
   const auth = await requireAuth()
   if (!auth.membership) return null
   const companyId = auth.membership.companyId
-  const [{ data: readiness }, { count: staff }, { count: tasks }, { count: resources }, { count: projects }, { count: billing }] = await Promise.all([
+  const [{ data: readiness }, { count: staff }, { count: tasks }, { count: resources }, { count: projects }, { count: billing }, { data: qaItems }] = await Promise.all([
     supabaseAdmin.from('coordiqo_saas_readiness_v').select('*').eq('company_id', companyId).maybeSingle(),
     supabaseAdmin.from('staff_profiles').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('tasks').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('resource_assets').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('projects').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('billing_underlays').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
+    supabaseAdmin.from('qa_test_items').select('id, title, description, status, evidence, qa_test_runs(name)').or(`company_id.eq.${companyId},company_id.is.null`).is('archived_at', null).order('sort_order'),
   ])
   const row = readiness as SaasReadinessRow | null
+  const qaRows = (qaItems ?? []) as QaTestItemRow[]
   const checks = [
     { label: 'Grundinställningar och moduler', ok: row?.readiness_status === 'ready', href: '/settings/health' },
     { label: 'Personal finns', ok: Number(staff ?? 0) > 0, href: '/staff' },
@@ -88,6 +100,26 @@ export default async function PilotReadinessPage() {
             {testScenarios.map((scenario) => (
               <div key={scenario} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-950">
                 {scenario}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="coordiqo-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">QA-status</h2>
+          <div className="mt-4 space-y-3">
+            {qaRows.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><p className="font-semibold text-slate-950">{item.title}</p><p className="mt-1 text-sm text-slate-500">{item.description}</p></div>
+                  <StatusBadge status={item.status} />
+                </div>
+                <form action={updateQaTestItemAction} className="mt-3 grid gap-3 md:grid-cols-[160px_1fr_auto]">
+                  <input type="hidden" name="id" value={item.id} />
+                  <Field label="Status"><select name="status" defaultValue={item.status} className={selectClassName}><option value="planned">Planerad</option><option value="passed">Godkänd</option><option value="failed">Underkänd</option><option value="skipped">Hoppad över</option></select></Field>
+                  <Field label="Kommentar"><input name="evidence" defaultValue={item.evidence ?? ''} className={inputClassName} /></Field>
+                  <div className="flex items-end"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Spara</button></div>
+                </form>
               </div>
             ))}
           </div>

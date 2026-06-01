@@ -7,6 +7,7 @@ import { Field, inputClassName, selectClassName } from '@/components/ui/form-car
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createAiDecisionSupportRunAction, saveIntegrationSettingAction, syncNotionKnowledgeAction } from '@/lib/engines/actions'
 import { getAiProviderConfig, isLangflowConfigured } from '@/lib/ai/orchestration'
+import { getProviderHealth } from '@/lib/integrations/provider-health'
 import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
 import { messagingReadiness } from '@/lib/messaging/providers'
 import { requireAuth } from '@/lib/auth/session'
@@ -37,9 +38,10 @@ export default async function IntegrationsPage() {
   const langflowReady = isLangflowConfigured(aiConfig)
   const notion = getNotionKnowledgeConfig()
   const messaging = messagingReadiness()
-  const [{ data: settings }, { data: aiRuns }] = await Promise.all([
+  const [{ data: settings }, { data: aiRuns }, providerHealth] = await Promise.all([
     supabaseAdmin.from('integration_settings').select('id, provider, status, config, created_at').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(20),
     supabaseAdmin.from('ai_runs').select('id, run_type, locale, status, output_summary, created_at').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
+    getProviderHealth(auth.membership.locale),
   ])
   const integrationRows = (settings ?? []) as IntegrationSettingRow[]
   const aiRunRows = (aiRuns ?? []) as AiRunRow[]
@@ -57,6 +59,18 @@ export default async function IntegrationsPage() {
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">AI-spårning</p><StatusBadge status={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'ready' : 'needs_action'} tone={aiConfig.langfusePublicKey && aiConfig.langfuseSecretKey ? 'success' : 'warning'} /></div>
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">Kunskapskälla</p><StatusBadge status={notion.notionApiKey ? 'ready' : 'needs_action'} tone={notion.notionApiKey ? 'success' : 'warning'} /></div>
           <div className="coordiqo-card p-5"><p className="text-sm text-slate-500">SMS</p><StatusBadge status={messaging.smsReady ? 'ready' : 'needs_action'} tone={messaging.smsReady ? 'success' : 'warning'} /></div>
+        </section>
+
+        <section className="coordiqo-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">Livekontroll</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {providerHealth.map((check) => (
+              <div key={check.key} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3"><p className="font-semibold text-slate-950">{check.label}</p><StatusBadge status={check.ok ? 'Redo' : 'Behöver åtgärd'} tone={check.ok ? 'success' : 'warning'} /></div>
+                <p className="mt-2 text-sm text-slate-600">{check.detail}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
