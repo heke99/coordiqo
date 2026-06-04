@@ -51,7 +51,10 @@ export function LoginForm() {
       return
     }
 
-    router.push('/')
+    const nextPath = searchParams.get('next')
+    const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
+
+    router.replace(safeNextPath ?? '/dashboard')
     router.refresh()
   }
 
