@@ -1,183 +1,51 @@
-'use client'
+export const dynamic = 'force-dynamic'
 
-import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { redirect } from 'next/navigation'
 
-import { createClient } from '@/lib/supabase/client'
+import { SetupRequestForm, type SetupOption } from '@/components/setup/setup-request-form'
+import { getActiveIndustryProfiles, getOperationalModels } from '@/lib/industry/registry'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 
-type SetupFormState = {
-  companyName: string
-  orgNumber: string
-  industryType: string
-  operationalModel: string
-  locale: string
-  timezone: string
-  defaultTeamName: string
-}
+export default async function SetupPage() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-const industryOptions = [
-  { value: 'home_care', label: 'Hemtjänst' },
-  { value: 'healthcare', label: 'Hemsjukvård / vård' },
-  { value: 'cleaning', label: 'Städ' },
-  { value: 'property', label: 'Fastighet / hyresvärd' },
-  { value: 'field_service', label: 'Tekniker / service' },
-  { value: 'parking', label: 'Parkeringsövervakning' },
-  { value: 'staffing', label: 'Bemanning' },
-  { value: 'security', label: 'Bevakning / patrull' },
-  { value: 'construction', label: 'Bygg' },
-  { value: 'municipality', label: 'Kommunal verksamhet' },
-  { value: 'courier', label: 'Bud / kurir / leverans' },
-  { value: 'other', label: 'Annan verksamhet' },
-]
-
-const modelOptions = [
-  { value: 'route_based', label: 'Ruttbaserad' },
-  { value: 'area_based', label: 'Områdesbaserad' },
-  { value: 'object_based', label: 'Objektbaserad' },
-  { value: 'case_based', label: 'Ärendebaserad' },
-  { value: 'calendar_based', label: 'Kalenderbaserad' },
-  { value: 'patrol_based', label: 'Patrullbaserad' },
-  { value: 'team_based', label: 'Teambaserad' },
-  { value: 'project_based', label: 'Projektbaserad' },
-  { value: 'delivery_based', label: 'Leveransbaserad' },
-  { value: 'on_call', label: 'Jourbaserad' },
-]
-
-function friendlyError(message: string) {
-  const normalized = message.toLowerCase()
-
-  if (normalized.includes('not authenticated')) return 'Du måste vara inloggad för att skapa ditt företag.'
-  if (normalized.includes('already has an active company membership')) return 'Det här kontot har redan en aktiv företagstillhörighet.'
-  if (normalized.includes('company name is required')) return 'Företagsnamn är obligatoriskt.'
-
-  return message
-}
-
-export default function SetupPage() {
-  const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
-  const [checking, setChecking] = useState(true)
-  const [loading, setLoading] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [form, setForm] = useState<SetupFormState>({
-    companyName: '',
-    orgNumber: '',
-    industryType: 'property',
-    operationalModel: 'object_based',
-    locale: 'sv',
-    timezone: 'Europe/Stockholm',
-    defaultTeamName: 'Huvudteam',
-  })
-
-  useEffect(() => {
-    let active = true
-
-    async function bootstrapGuard() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!active) return
-
-      if (!user) {
-        router.replace('/login')
-        return
-      }
-
-      setUserEmail(user.email ?? null)
-
-      const { data: membership } = await supabase
-        .from('company_memberships')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .limit(1)
-        .maybeSingle()
-
-      if (!active) return
-
-      if (membership) {
-        window.location.replace('/dashboard')
-        return
-      }
-
-      setChecking(false)
-    }
-
-    void bootstrapGuard()
-
-    return () => {
-      active = false
-    }
-  }, [router, supabase])
-
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      setLoading(false)
-      setError('Du måste vara inloggad för att fortsätta.')
-      return
-    }
-
-    const { error } = await supabase.rpc('bootstrap_company_for_current_user', {
-      p_company_name: form.companyName,
-      p_org_number: form.orgNumber || null,
-      p_industry_type: form.industryType,
-      p_operational_model: form.operationalModel,
-      p_timezone: form.timezone,
-      p_default_team_name: form.defaultTeamName,
-      p_locale: form.locale,
-    })
-
-    if (error) {
-      setLoading(false)
-      setError(friendlyError(error.message))
-      return
-    }
-
-    setLoading(false)
-    setSubmitted(true)
+  if (!user) {
+    redirect('/login')
   }
 
-  if (checking) {
-    return (
-      <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
-        <div className="coordiqo-shell flex min-h-[calc(100vh-3rem)] items-center justify-center">
-          <div className="coordiqo-card w-full max-w-lg p-8 text-center">
-            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
-            <h1 className="mt-5 text-xl font-semibold text-slate-950">Förbereder din onboarding</h1>
-            <p className="mt-2 text-sm text-slate-600">Vi kontrollerar om ditt konto redan är kopplat till ett företag.</p>
-          </div>
-        </div>
-      </main>
-    )
+  const { data: membership } = await supabaseAdmin
+    .from('company_memberships')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .is('archived_at', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (membership) {
+    redirect('/dashboard')
   }
 
-  if (submitted) {
-    return (
-      <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
-        <div className="coordiqo-shell flex min-h-[calc(100vh-3rem)] items-center justify-center">
-          <section className="coordiqo-card w-full max-w-xl p-8 text-center">
-            <div className="coordiqo-badge coordiqo-badge--success">Nästa steg</div>
-            <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950">Ansökan skickad</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Coordiqo-teamet granskar uppgifterna, skapar bolaget och aktiverar första företagsadministratör. Du får åtkomst när miljön är godkänd.
-            </p>
-            <a href="/login" className="mt-6 inline-flex rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Till inloggning</a>
-          </section>
-        </div>
-      </main>
-    )
-  }
+  const [industryProfiles, operationalModels] = await Promise.all([
+    getActiveIndustryProfiles(),
+    getOperationalModels(),
+  ])
+
+  const industryOptions: SetupOption[] = industryProfiles.map((profile) => ({
+    value: profile.code,
+    label: profile.nameSv,
+  }))
+
+  const modelOptions: SetupOption[] = operationalModels.map((model) => ({
+    value: model.code,
+    label: model.label,
+  }))
+
+  const defaultIndustry = industryOptions.find((option) => option.value === 'other')?.value ?? industryOptions[0]?.value ?? 'other'
 
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
@@ -190,7 +58,8 @@ export default function SetupPage() {
                 Ansök om Coordiqo-miljö
               </h1>
               <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
-                Coordiqo-teamet skapar och aktiverar bolaget efter granskning. Det gör att företagsmiljö, roller, moduler, språk och första företagsadministratör blir kontrollerade från start.
+                Du har ingen aktiv företagsmiljö ännu. Skicka en ansökan så granskar Coordiqo-teamet uppgifterna,
+                skapar bolaget och aktiverar första företagsadministratör.
               </p>
             </div>
 
@@ -199,7 +68,7 @@ export default function SetupPage() {
                 <p className="text-sm font-semibold text-slate-900">Det som skickas nu</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
                   <li>• Bolagsansökan till Coordiqo-teamet</li>
-                  <li>• Förslag på bransch, modell och språk</li>
+                  <li>• Förslag på bransch, arbetssätt och språk</li>
                   <li>• Uppgifter för första företagsadministratör</li>
                 </ul>
               </div>
@@ -215,123 +84,17 @@ export default function SetupPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-medium text-slate-500">Inloggat konto</p>
-              <p className="mt-1 text-base font-semibold text-slate-950">{userEmail ?? 'Okänt konto'}</p>
+              <p className="mt-1 text-base font-semibold text-slate-950">{user.email ?? 'Okänt konto'}</p>
             </div>
           </div>
         </section>
 
-        <section className="coordiqo-card p-5 sm:p-7">
-          <div className="mb-6">
-            <p className="text-sm font-medium text-slate-500">Granskning av Coordiqo-teamet</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-950">Grunduppgifter</h2>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Företagsnamn</label>
-              <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                type="text"
-                value={form.companyName}
-                onChange={(e) => setForm((prev) => ({ ...prev, companyName: e.target.value }))}
-                placeholder="Till exempel Div3rsa AB"
-                required
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Organisationsnummer</label>
-                <input
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                  type="text"
-                  value={form.orgNumber}
-                  onChange={(e) => setForm((prev) => ({ ...prev, orgNumber: e.target.value }))}
-                  placeholder="559123-4567"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Tidszon</label>
-                <input
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                  type="text"
-                  value={form.timezone}
-                  onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Standardspråk</label>
-              <select
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                value={form.locale}
-                onChange={(e) => setForm((prev) => ({ ...prev, locale: e.target.value }))}
-              >
-                <option value="sv">Svenska</option>
-                <option value="en">English</option>
-              </select>
-              <p className="mt-1.5 text-xs leading-5 text-slate-500">Coordiqo-teamet kan ändra språket innan bolaget aktiveras.</p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Bransch</label>
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                  value={form.industryType}
-                  onChange={(e) => setForm((prev) => ({ ...prev, industryType: e.target.value }))}
-                >
-                  {industryOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Primär operativ modell</label>
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                  value={form.operationalModel}
-                  onChange={(e) => setForm((prev) => ({ ...prev, operationalModel: e.target.value }))}
-                >
-                  {modelOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1.5 text-xs leading-5 text-slate-500">Detta låser inte systemet. Det styr bara vilken vy, terminologi och mallar som prioriteras först.</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Första teamets namn</label>
-              <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-                type="text"
-                value={form.defaultTeamName}
-                onChange={(e) => setForm((prev) => ({ ...prev, defaultTeamName: e.target.value }))}
-                placeholder="Huvudteam"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? 'Skickar ansökan...' : 'Skicka ansökan'}
-            </button>
-          </form>
-        </section>
+        <SetupRequestForm
+          industryOptions={industryOptions}
+          modelOptions={modelOptions}
+          defaultIndustry={defaultIndustry}
+          defaultModel="route_based"
+        />
       </div>
     </main>
   )

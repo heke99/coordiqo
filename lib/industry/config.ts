@@ -47,17 +47,25 @@ export type IndustryPreset = {
 }
 
 export const INDUSTRY_LABELS: Record<string, string> = {
-  home_care: 'Hemtjänst',
-  healthcare: 'Vård och hemsjukvård',
+  home_care: 'Hemtjänst / omsorg',
+  healthcare: 'Vård / hemsjukvård',
   cleaning: 'Städ',
-  property: 'Fastighet och hyresvärd',
-  construction: 'Bygg',
+  property: 'Fastighet',
+  construction: 'Bygg / projekt',
   parking: 'Parkeringsövervakning',
   staffing: 'Bemanning',
-  field_service: 'Tekniker och service',
-  security: 'Bevakning',
+  field_service: 'Tekniker / fältservice',
+  security: 'Bevakning / patrull',
   municipality: 'Kommunal verksamhet',
-  courier: 'Bud och kurir',
+  courier: 'Bud / kurir / leverans',
+  transport_logistics: 'Transport och logistik',
+  energy_infrastructure: 'Energi / VA / infrastruktur',
+  telecom_it: 'Telekom / IT-service',
+  facility_management: 'Facility management',
+  waste_recycling: 'Avfall / återvinning',
+  education: 'Skola / utbildning',
+  hotel_facility: 'Hotell / anläggningsservice',
+  industrial_maintenance: 'Industri / underhåll',
   other: 'Annan verksamhet',
 }
 
@@ -294,7 +302,10 @@ export const CORE_MODULES = [
 
 export function getIndustryLabel(code: string | null | undefined) {
   if (!code) return 'Bransch ej vald'
-  return INDUSTRY_LABELS[code] ?? code
+  if (INDUSTRY_LABELS[code]) return INDUSTRY_LABELS[code]
+  // Unknown (registry-defined) codes: show a readable label instead of the raw code.
+  const pretty = code.replace(/_/g, ' ')
+  return pretty.charAt(0).toUpperCase() + pretty.slice(1)
 }
 
 export function getOperationalModelLabel(code: string | null | undefined) {

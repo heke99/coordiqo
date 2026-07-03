@@ -15,7 +15,8 @@ import { publishPlanningDraft } from '@/lib/planning/publish-draft'
 import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
-import { allCompanyCoreModules, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
+import { allCompanyCoreModules } from '@/lib/industry/config'
+import { getIndustryProfile } from '@/lib/industry/registry'
 import { normalizeLocale } from '@/lib/i18n/config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -546,8 +547,8 @@ export async function archiveStaffAction(formData: FormData) {
 export async function updateCompanyIndustrySettingsAction(formData: FormData) {
   const auth = await requireMembership('company_admin', 'att uppdatera branschinställningar')
   const industryType = value(formData, 'industry_type') ?? 'other'
-  const operationalModel = value(formData, 'operational_model') ?? 'route_based'
-  const preset = getIndustryPreset(industryType)
+  const profile = await getIndustryProfile(industryType)
+  const operationalModel = value(formData, 'operational_model') ?? profile.defaultOperationalModel
 
   const { error: companyError } = await supabaseAdmin
     .from('companies')
@@ -563,7 +564,7 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
   await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: auth.membership!.companyId }).throwOnError()
 
   const activeModules = allCompanyCoreModules()
-  const enabledOperationalModels = uniqueOperationalModels(operationalModel, preset.operationalModels)
+  const enabledOperationalModels = Array.from(new Set([operationalModel, ...profile.allowedOperationalModels]))
 
   await Promise.all([
     supabaseAdmin.from('company_settings').upsert({
@@ -575,10 +576,10 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
       company_id: auth.membership!.companyId,
       industry_code: industryType,
       operational_model: operationalModel,
-      terminology: preset.terminology,
-      task_statuses: preset.statuses,
-      mobile_actions: preset.mobileActions,
-      planning_rules: preset.planningRules,
+      terminology: profile.terminology,
+      task_statuses: profile.statuses,
+      mobile_actions: profile.mobileActions,
+      planning_rules: profile.planningRules,
       settings: {
         primaryOperationalModel: operationalModel,
         enabledOperationalModels,
@@ -589,24 +590,24 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
     }, { onConflict: 'company_id' }),
   ])
 
-  for (const taskName of preset.taskTypes) {
+  for (const taskName of profile.taskTypes) {
     const code = normalizeCode(taskName) ?? taskName.toLowerCase()
     await supabaseAdmin.from('task_types').upsert({
       company_id: auth.membership!.companyId,
       code,
       name: taskName,
-      description: `${preset.label}: ${taskName}`,
+      description: `${profile.nameSv}: ${taskName}`,
       is_active: true,
     }, { onConflict: 'company_id,code' })
   }
 
-  for (const resourceName of preset.resourceTypes) {
+  for (const resourceName of profile.resourceTypes) {
     const code = normalizeCode(resourceName) ?? resourceName.toLowerCase()
     await supabaseAdmin.from('resource_types').upsert({
       company_id: auth.membership!.companyId,
       code,
       name: resourceName,
-      description: `${preset.label}: ${resourceName}`,
+      description: `${profile.nameSv}: ${resourceName}`,
       is_active: true,
     }, { onConflict: 'company_id,code' })
   }
@@ -3341,7 +3342,8 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
   const auth = await requirePlatformAdmin('att skapa bolag')
   const name = value(formData, 'name')
   const industryType = value(formData, 'industry_type') ?? 'other'
-  const operationalModel = value(formData, 'operational_model') ?? 'case_based'
+  const profile = await getIndustryProfile(industryType)
+  const operationalModel = value(formData, 'operational_model') ?? profile.defaultOperationalModel
   const locale = normalizeLocale(value(formData, 'locale'))
   const timezone = value(formData, 'timezone') ?? 'Europe/Stockholm'
   const currency = (value(formData, 'currency') ?? 'SEK').toUpperCase()
@@ -3357,9 +3359,8 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
     .single()
   if (error) throw new Error(error.message)
 
-  const preset = getIndustryPreset(industryType)
   const activeModules = allCompanyCoreModules()
-  const enabledOperationalModels = uniqueOperationalModels(operationalModel, preset.operationalModels)
+  const enabledOperationalModels = Array.from(new Set([operationalModel, ...profile.allowedOperationalModels]))
 
   await supabaseAdmin.from('company_settings').insert({
     company_id: company.id,
@@ -3374,10 +3375,10 @@ export async function createCompanyWorkspaceAction(formData: FormData) {
     company_id: company.id,
     industry_code: industryType,
     operational_model: operationalModel,
-    terminology: preset.terminology,
-    task_statuses: preset.statuses,
-    mobile_actions: preset.mobileActions,
-    planning_rules: preset.planningRules,
+    terminology: profile.terminology,
+    task_statuses: profile.statuses,
+    mobile_actions: profile.mobileActions,
+    planning_rules: profile.planningRules,
     settings: {
       primaryOperationalModel: operationalModel,
       enabledOperationalModels,
