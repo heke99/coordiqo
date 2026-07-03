@@ -7,6 +7,7 @@ import { TaskForm } from '@/components/tasks/task-form'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireCompanyContext } from '@/lib/auth/guards'
+import { resolveIndustryTerminology } from '@/lib/industry/registry'
 import { archiveResourceRequirementAction, archiveTaskAction, archiveTaskRequirementAction, createManualTaskAssignmentAction, createResourceRequirementAction, createTaskCommentAction, createTaskRequirementAction, resolveRuleViolationAction, runTaskRuleCheckAction, updateTaskAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -21,6 +22,7 @@ function datetimeLocal(value: string | null | undefined) {
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const auth = await requireCompanyContext()
   const { id } = await params
+  const terminology = await resolveIndustryTerminology(auth.membership.companyId, auth.membership.industryType)
 
   const [{ data: task }, { data: taskTypes }, { data: entities }, { data: teams }, { data: staff }, { data: shifts }, { data: assignments }, { data: planningConflicts }, { data: workOrders }, { data: comments }, { data: history }, { data: skills }, { data: certifications }, { data: requirements }, { data: violations }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([
     supabaseAdmin.from('tasks').select('*, entities(name), teams(name), staff_profiles(full_name), task_types(name), work_orders(title)').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),
@@ -49,7 +51,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     <AppShell auth={auth} title={task.title} subtitle="Uppdragsdetaljer, status, tilldelning, tidsfönster och kommentarer.">
       <div className="grid gap-5 lg:grid-cols-[1fr_0.75fr]">
         <FormCard title="Redigera uppdrag">
-          <TaskForm action={updateTaskAction} task={task} taskTypes={taskTypes ?? []} entities={entities ?? []} teams={teams ?? []} staff={staff ?? []} workOrders={workOrders ?? []} submitLabel="Spara uppdrag" industryType={auth.membership.industryType} />
+          <TaskForm action={updateTaskAction} task={task} taskTypes={taskTypes ?? []} entities={entities ?? []} teams={teams ?? []} staff={staff ?? []} workOrders={workOrders ?? []} submitLabel="Spara" industryType={auth.membership.industryType} terminology={terminology} />
         </FormCard>
 
         <div className="space-y-5">
@@ -95,7 +97,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             <div className="mt-5 space-y-3">{planningConflicts?.length ? planningConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-amber-950">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.conflict_type} · {conflict.status} · {new Date(conflict.created_at).toLocaleString('sv-SE')}</p></div><StatusBadge status={conflict.severity} tone={['hard', 'critical', 'blocked'].includes(conflict.severity) ? 'danger' : 'warning'} /></div></div>) : <p className="text-sm text-slate-600">Inga planeringskonflikter registrerade.</p>}</div>
           </section>
 
-                    <FormCard title="Resurser som behövs" description="Branschneutrala resurskrav som AI-planeraren tar hänsyn till. Välj exakt resurs, till exempel Nyckel 15, eller valfri resurs av en typ, till exempel Bil.">
+                    <FormCard title="Resurser som behövs" description="Resurskrav som den smarta planeringen tar hänsyn till. Välj exakt resurs, till exempel Nyckel 15, eller valfri resurs av en typ, till exempel Bil.">
             <form action={createResourceRequirementAction} className="grid gap-4">
               <input type="hidden" name="owner_type" value="task" />
               <input type="hidden" name="owner_id" value={task.id} />

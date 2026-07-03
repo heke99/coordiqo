@@ -54,7 +54,7 @@ export default async function PilotReadinessPage() {
     'Avvikelse skapas och stängs',
     'AI-beslutsstöd skapas utan att fatta beslut automatiskt',
     'Kund-SMS skickas eller köas',
-    'Tenant-isolering verifieras mellan två bolag',
+    'Företagsseparation verifieras mellan två bolag',
   ]
   const ready = checks.filter((check) => check.ok).length
 

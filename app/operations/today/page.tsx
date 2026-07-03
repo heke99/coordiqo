@@ -7,7 +7,7 @@ import { OperationsMap } from '@/components/maps/operations-map'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireCompanyContext } from '@/lib/auth/guards'
-import { getIndustryPreset } from '@/lib/industry/config'
+import { getIndustryProfile, resolveIndustryTerminology } from '@/lib/industry/registry'
 import { buildDailyOperationsSummary, buildTaskWaypoint, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime, type DailyAssignmentRow, type DailyDeviationRow, type DailyResourceAssignmentRow, type DailyTaskRow } from '@/lib/operations/operations-engine'
 import { friendlyPlanningReason } from '@/lib/planning/friendly-reasons'
 import type { RoutingWaypoint } from '@/lib/routing/types'
@@ -36,7 +36,10 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
   const params = await searchParams
   const selectedDate = params?.date ?? new Date().toISOString().slice(0, 10)
   const bounds = dateBounds(selectedDate)
-  const preset = getIndustryPreset(auth.membership.industryType)
+  const [profile, terminology] = await Promise.all([
+    getIndustryProfile(auth.membership.industryType),
+    resolveIndustryTerminology(auth.membership.companyId, auth.membership.industryType),
+  ])
 
   const [{ data: assignments }, { data: tasks }, { data: resourceAssignments }, { data: deviations }, { data: conflicts }] = await Promise.all([
     supabaseAdmin
@@ -100,8 +103,8 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
     <AppShell
       auth={auth}
       title="Daglig operationsvy"
-      subtitle={`Kontrollpanel för ${preset.shortLabel.toLowerCase()} med ${getIndustryTaskFocus(auth.membership.industryType)}.`}
-      actions={<div className="flex gap-2"><Link href="/planning/assistant" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">AI-planera</Link><Link href="/resources" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Resurser</Link></div>}
+      subtitle={`Kontrollpanel för ${profile.shortNameSv.toLowerCase()} med ${getIndustryTaskFocus(auth.membership.industryType)}.`}
+      actions={<div className="flex gap-2"><Link href="/planning/assistant" className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Smart planering</Link><Link href="/resources" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Resurser</Link></div>}
     >
       <div className="mb-5 rounded-3xl border border-slate-200 bg-white p-4">
         <form className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -111,7 +114,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       </div>
 
       <section className="grid gap-4 md:grid-cols-4 xl:grid-cols-8">
-        {stat(preset.terminology.tasks, summary.totalTasks)}
+        {stat(terminology.tasks, summary.totalTasks)}
         {stat('Tilldelningar', summary.totalAssignments)}
         {stat('Aktiva', summary.activeAssignments)}
         {stat('Klara', summary.completedAssignments)}
@@ -134,7 +137,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="coordiqo-card p-5">
           <div className="flex items-center justify-between gap-3">
-            <div><h2 className="text-lg font-semibold text-slate-950">Dagens {preset.terminology.route.toLowerCase()}</h2><p className="mt-1 text-sm text-slate-600">Grupperat per personal/team med stopp i tidsordning.</p></div>
+            <div><h2 className="text-lg font-semibold text-slate-950">Dagens {terminology.route.toLowerCase()}</h2><p className="mt-1 text-sm text-slate-600">Grupperat per personal/team med stopp i tidsordning.</p></div>
             <StatusBadge status={`${routes.length} rutter`} />
           </div>
           <div className="mt-5 space-y-4">
@@ -142,7 +145,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
               <div key={route.key} className="rounded-3xl border border-slate-200 bg-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div><h3 className="font-semibold text-slate-950">{route.title}</h3><p className="mt-1 text-xs text-slate-500">{route.stopCount} stopp · {route.transportMode ?? 'färdsätt ej satt'} · {formatTime(route.startAt)}–{formatTime(route.endAt)}</p></div>
-                  <StatusBadge status={route.key.startsWith('staff') ? preset.terminology.staff : 'Team'} />
+                  <StatusBadge status={route.key.startsWith('staff') ? terminology.staff : 'Team'} />
                 </div>
                 <div className="mt-4 space-y-2">
                   {route.rows.map((assignment, index: number) => (
@@ -159,7 +162,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
                   ))}
                 </div>
               </div>
-            )) : <EmptyState eyebrow="Operations" title="Ingen publicerad plan för dagen" description="Kör AI-planeraren eller skapa manuella tilldelningar så visas rutterna här." action={<Link href="/planning/assistant" className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Öppna AI-planerare</Link>} />}
+            )) : <EmptyState eyebrow="Dagens drift" title="Ingen publicerad plan för dagen" description="Det finns ingen plan för den valda dagen ännu. Skapa en plan med planeringsassistenten eller tilldela arbete manuellt så visas rutterna här." action={<Link href="/planning/assistant" className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Öppna planeringsassistenten</Link>} />}
           </div>
         </section>
 
@@ -188,12 +191,12 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
       </div>
 
       <section className="coordiqo-card mt-5 p-5">
-        <h2 className="text-lg font-semibold text-slate-950">Oplanerade {preset.terminology.tasks.toLowerCase()}</h2>
+        <h2 className="text-lg font-semibold text-slate-950">Oplanerade {terminology.tasks.toLowerCase()}</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {unassignedTasks.length ? unassignedTasks.slice(0, 12).map((task) => (
             <Link key={task.id} href={`/tasks/${task.id}`} className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:bg-slate-50">
               <div className="flex items-start justify-between gap-3"><p className="text-sm font-semibold text-slate-950">{task.title}</p><StatusBadge status={task.priority ?? 'normal'} /></div>
-              <p className="mt-2 text-xs text-slate-500">{task.task_types?.name ?? preset.terminology.task} · {formatTime(task.scheduled_start ?? task.time_window_start)} · {getStopLabel(task)}</p>
+              <p className="mt-2 text-xs text-slate-500">{task.task_types?.name ?? terminology.task} · {formatTime(task.scheduled_start ?? task.time_window_start)} · {getStopLabel(task)}</p>
             </Link>
           )) : <p className="text-sm text-slate-600">Inga oplanerade uppdrag i dag.</p>}
         </div>

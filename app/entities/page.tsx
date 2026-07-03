@@ -58,9 +58,9 @@ export default async function EntitiesPage({ searchParams }: EntitiesPageProps) 
         {!entities?.length ? (
           <EmptyState
             eyebrow="Objekt"
-            title="Skapa första objektet"
-            description="Objektmodellen låser inte företaget. Vilka objekt som visas styrs av branschpresets och kan senare anpassas per företag."
-            action={canManage ? <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white" href="/entities/new">Skapa objekt</Link> : undefined}
+            title="Det finns inga objekt eller kunder ännu"
+            description="Objekt är det arbetet utförs hos eller på — kunder, platser, fastigheter eller mottagare beroende på bransch. Utan objekt kan uppdrag inte kopplas till rätt plats. Skapa det första för att komma igång."
+            action={canManage ? <Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white" href="/entities/new">Skapa första objektet</Link> : undefined}
           />
         ) : (
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

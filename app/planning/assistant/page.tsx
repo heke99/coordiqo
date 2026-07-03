@@ -25,7 +25,7 @@ export default async function PlanningAssistantPage() {
   return (
     <AppShell
       auth={auth}
-      title="AI-planeringsassistent"
+      title="Planeringsassistent"
       subtitle="Skapa planeringsutkast från vanlig text, med strukturerade regler, filter och konfliktkontroll."
       actions={<Link href="/planning" className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-800">Till planering</Link>}
     >
@@ -62,13 +62,13 @@ export default async function PlanningAssistantPage() {
               <Field label="Uppdrag"><select name="unscheduled_only" defaultValue="true" className={selectClassName}><option value="true">Endast oschemalagda</option><option value="false">Alla relevanta</option></select></Field>
             </div>
             <Field label="Låsta tilldelningar"><select name="include_locked_assignments" defaultValue="true" className={selectClassName}><option value="true">Respektera låsta tilldelningar</option><option value="false">Ignorera låsta i urval</option></select></Field>
-            <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Skapa AI-planeringsutkast</button>
+            <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Skapa planeringsutkast</button>
           </form>
         </section>
 
         <aside className="space-y-5">
           <section className="coordiqo-card p-5">
-            <h2 className="text-lg font-semibold text-slate-950">Så tolkar AI-planeraren texten</h2>
+            <h2 className="text-lg font-semibold text-slate-950">Så tolkas texten</h2>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
               <p><b className="text-slate-950">AI-assistenten</b> ska vara stöd ovanpå databasregler och motor, inte ensam källa till tider eller kostnad.</p>
               <p><b className="text-slate-950">Planen</b> skapas som draft med kandidater, score och konflikter innan publicering.</p>

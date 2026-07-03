@@ -2,6 +2,13 @@ import { Field, inputClassName, selectClassName, textareaClassName } from '@/com
 
 type Option = { id: string; name?: string; full_name?: string; label_singular?: string; title?: string; code?: string }
 
+export type TaskFormTerminology = {
+  task: string
+  tasks: string
+  entity: string
+  entities: string
+}
+
 type TaskFormProps = {
   action: (formData: FormData) => void | Promise<void>
   task?: any
@@ -12,6 +19,7 @@ type TaskFormProps = {
   workOrders?: Option[]
   submitLabel: string
   industryType?: string | null
+  terminology?: TaskFormTerminology | null
 }
 
 function datetimeLocal(value: string | null | undefined) {
@@ -22,7 +30,7 @@ function datetimeLocal(value: string | null | undefined) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
-function taskCopy(industryType?: string | null) {
+function taskCopy(industryType?: string | null, terminology?: TaskFormTerminology | null) {
   switch (industryType) {
     case 'home_care':
       return {
@@ -79,19 +87,20 @@ function taskCopy(industryType?: string | null) {
         durationHint: 'Serviceuppdrag kan anges i timmar vid längre teknikerjobb.',
       }
     default:
+      // Unknown/registry-defined industries use the company's own terminology.
       return {
-        title: 'Titel',
+        title: terminology?.task ?? 'Titel',
         titlePlaceholder: 'Ex. Besök, service, kontroll',
-        entityLabel: 'Objekt/kund/plats',
+        entityLabel: terminology?.entity ?? 'Objekt/kund/plats',
         instructions: 'Instruktioner till utförare',
         description: 'Beskrivning',
-        durationHint: 'Välj minuter eller timmar. Systemet sparar alltid minuter bakom kulisserna.',
+        durationHint: 'Välj minuter eller timmar.',
       }
   }
 }
 
-export function TaskForm({ action, task, taskTypes, entities, teams, staff, workOrders = [], submitLabel, industryType }: TaskFormProps) {
-  const copy = taskCopy(industryType)
+export function TaskForm({ action, task, taskTypes, entities, teams, staff, workOrders = [], submitLabel, industryType, terminology }: TaskFormProps) {
+  const copy = taskCopy(industryType, terminology)
   const savedMinutes = Number(task?.estimated_duration_minutes ?? 60)
   const defaultUnit = savedMinutes >= 120 && savedMinutes % 60 === 0 ? 'hours' : 'minutes'
   const defaultDurationValue = defaultUnit === 'hours' ? savedMinutes / 60 : savedMinutes
@@ -100,8 +109,8 @@ export function TaskForm({ action, task, taskTypes, entities, teams, staff, work
     <form action={action} className="grid gap-5">
       {task?.id ? <input type="hidden" name="id" value={task.id} /> : null}
       <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-950">Branschstyrda uppdragsuppgifter</p>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Formuläret använder samma task-tabell men ändrar språk och prioriterade fält efter bransch. Nästa planeringsbatch kan bygga regler ovanpå detta.</p>
+        <p className="text-sm font-semibold text-slate-950">Branschanpassade uppgifter</p>
+        <p className="mt-1 text-sm leading-6 text-slate-600">Formuläret anpassar ordval och prioriterade fält efter er bransch. Allt sparas på samma sätt oavsett bransch.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

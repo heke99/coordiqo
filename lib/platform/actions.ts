@@ -16,7 +16,7 @@ import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResou
 import { logAuditEvent } from '@/lib/platform/audit'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
 import { allCompanyCoreModules } from '@/lib/industry/config'
-import { getIndustryProfile } from '@/lib/industry/registry'
+import { getIndustryProfile, invalidateCompanyRuntimeConfigCache } from '@/lib/industry/registry'
 import { normalizeLocale } from '@/lib/i18n/config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -612,6 +612,7 @@ export async function updateCompanyIndustrySettingsAction(formData: FormData) {
     }, { onConflict: 'company_id,code' })
   }
 
+  invalidateCompanyRuntimeConfigCache(auth.membership!.companyId)
   await audit(auth.membership!.companyId, auth.userId, 'update', 'industry_runtime_config', auth.membership!.companyId, { industryType, operationalModel })
   revalidatePath('/settings/industry')
   revalidatePath('/settings')

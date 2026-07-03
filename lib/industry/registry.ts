@@ -86,8 +86,10 @@ const DEFAULT_TERMINOLOGY: IndustryTerminology = {
 }
 
 const REGISTRY_CACHE_TTL_MS = 60_000
+const RUNTIME_CONFIG_CACHE_TTL_MS = 30_000
 
 let registryCache: { loadedAt: number; profiles: IndustryProfile[] } | null = null
+const runtimeConfigCache = new Map<string, { loadedAt: number; config: CompanyRuntimeConfig | null }>()
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -317,8 +319,14 @@ export async function getOperationalModels(): Promise<OperationalModelOption[]> 
 
 /**
  * The company's runtime industry configuration, if any.
+ * Cached briefly since it is read on nearly every page render.
  */
 export async function getCompanyRuntimeConfig(companyId: string): Promise<CompanyRuntimeConfig | null> {
+  const cached = runtimeConfigCache.get(companyId)
+  if (cached && Date.now() - cached.loadedAt < RUNTIME_CONFIG_CACHE_TTL_MS) {
+    return cached.config
+  }
+
   try {
     const { data, error } = await supabaseAdmin
       .from('industry_runtime_configs')
@@ -326,9 +334,13 @@ export async function getCompanyRuntimeConfig(companyId: string): Promise<Compan
       .eq('company_id', companyId)
       .maybeSingle()
 
-    if (error || !data) return null
+    if (error) return cached?.config ?? null
+    if (!data) {
+      runtimeConfigCache.set(companyId, { loadedAt: Date.now(), config: null })
+      return null
+    }
 
-    return {
+    const config: CompanyRuntimeConfig = {
       companyId: data.company_id,
       industryCode: data.industry_code ?? 'other',
       operationalModel: data.operational_model ?? 'route_based',
@@ -338,8 +350,11 @@ export async function getCompanyRuntimeConfig(companyId: string): Promise<Compan
       planningRules: asStringArray(data.planning_rules),
       settings: (data.settings && typeof data.settings === 'object' ? data.settings : {}) as Record<string, unknown>,
     }
+
+    runtimeConfigCache.set(companyId, { loadedAt: Date.now(), config })
+    return config
   } catch {
-    return null
+    return cached?.config ?? null
   }
 }
 
@@ -369,4 +384,12 @@ export async function getIndustryTerminology(companyId: string): Promise<Industr
  */
 export function invalidateIndustryRegistryCache() {
   registryCache = null
+  runtimeConfigCache.clear()
+}
+
+/**
+ * Clears the cached runtime config for one company (used after settings updates).
+ */
+export function invalidateCompanyRuntimeConfigCache(companyId: string) {
+  runtimeConfigCache.delete(companyId)
 }
