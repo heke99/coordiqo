@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Coordiqo
 
-## Getting Started
+Coordiqo är en svensk SaaS-plattform för planering av **personal, uppdrag, rutter och
+resurser** — anpassad efter kundens bransch via en dynamisk branschmotor. En kodbas,
+många branscher: hemtjänst, städ, fastighet, bud/kurir, bygg, bevakning, bemanning,
+kommunal verksamhet med flera.
 
-First, run the development server:
+## Teknikstack
+
+- **Next.js 16** (App Router, React Server Components, server actions)
+- **Supabase** (PostgreSQL med radnivåskydd/RLS, Auth, Storage)
+- **Tailwind CSS 4**
+- Valfria integrationer: Resend (e-post), GraphHopper/Valhalla (rutt), VROOM (optimering),
+  Langflow (AI), Twilio (SMS) — alla med säkra reservlägen.
+
+## Kom igång lokalt
 
 ```bash
+npm install
+cp .env.example .env.local   # fyll i Supabase-uppgifter
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Databas: kör migreringarna i `supabase/migrations/` i ordning mot ditt Supabase-projekt.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Kommandon
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev        # utvecklingsserver
+npm run build      # produktionsbygge
+npm run lint       # eslint
+npm run typecheck  # tsc --noEmit
+```
 
-## Learn More
+## Arkitektur i korthet
 
-To learn more about Next.js, take a look at the following resources:
+| Område | Var |
+|---|---|
+| Publika sidor (hemsida, demo, juridik) | `app/page.tsx`, `app/book-demo/`, `app/integritetspolicy/` m.fl. |
+| Inloggad app | `app/*` med delat skal i `components/app/app-shell.tsx` |
+| Superadmin | `app/admin/*` (leads, bolag, branscher, support, go-live) |
+| Auth-guards | `lib/auth/guards.ts` (`requireCompanyContext`, `requirePlatformAdmin` …) |
+| Branschmotor | `lib/industry/registry.ts` + `supabase/migrations/…industry_registry.sql` — se `docs/industry-engine.md` |
+| Planeringsmotor | `lib/planning/*` |
+| Server actions | `lib/platform/actions.ts`, `lib/sales/demo-actions.ts`, `lib/support/actions.ts` |
+| Vänliga fel | `lib/errors/friendly-error.ts` |
+| Migreringar | `supabase/migrations/*.sql` (alltid additiva och idempotenta) |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Dokumentation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `docs/go-live-checklist.md` — checklista före produktionssättning
+- `docs/production-env.md` — alla miljövariabler med klassificering
+- `docs/customer-onboarding-runbook.md` — från lead till betalande kund
+- `docs/security-review-checklist.md` — säkerhetsgranskning
+- `docs/industry-engine.md` — så fungerar branschmotorn
+- `docs/sales-demo-script.md` — säljdemo-manus
+- `docs/manual-smoke-tests.md` — manuella röktester
 
-## Deploy on Vercel
+## Viktiga principer
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Kundspråk:** kundvända ytor är på svenska och visar aldrig interna/systemtermer.
+2. **Additiva migreringar:** ingen migrering får förstöra data; allt är idempotent.
+3. **Företagsseparation:** all företagsdata skyddas med RLS och `company_id`-filtrering.
+4. **Säkra reservlägen:** externa tjänster (e-post, rutt, AI, SMS) är valfria — saknas de
+   degraderar funktionen vänligt i stället för att krascha.
