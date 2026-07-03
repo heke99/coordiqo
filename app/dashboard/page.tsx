@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { CORE_MODULES } from '@/lib/industry/config'
 import { requireAuth } from '@/lib/auth/session'
 import { createTranslator } from '@/lib/i18n/labels'
+import { getOnboardingProgress } from '@/lib/onboarding/progress'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function countLabel(value: number | null | undefined, locale: string | null | undefined) {
@@ -22,10 +23,10 @@ export default async function DashboardPage() {
       <main className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 sm:py-8">
         <div className="coordiqo-shell">
           <EmptyState
-            eyebrow="Onboarding"
-            title="Slutför din första företagsmiljö"
-            description="Ditt konto är inloggat men saknar aktiv företagstillhörighet. Skapa eller koppla ditt första företag för att öppna Coordiqo-miljön."
-            action={<Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800" href="/setup">Fortsätt till setup</Link>}
+            eyebrow="Kom igång"
+            title="Du har ingen aktiv företagsmiljö ännu"
+            description="Skapa eller ansök om åtkomst för att fortsätta. Coordiqo-teamet aktiverar din företagsmiljö efter granskning."
+            action={<Link className="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800" href="/setup">Ansök om företagsmiljö</Link>}
           />
         </div>
       </main>
@@ -41,7 +42,7 @@ export default async function DashboardPage() {
     { href: '/tasks/new', label: t('dashboard.quick.createTask'), description: t('dashboard.quick.createTaskDescription') },
     { href: '/resources/new', label: t('dashboard.quick.createResource'), description: t('dashboard.quick.createResourceDescription') },
   ]
-  const [{ count: staffCount }, { count: teamCount }, { count: entityCount }, { count: taskCount }, { count: resourceCount }, { count: projectCount }, { count: openConflictCount }] = await Promise.all([
+  const [{ count: staffCount }, { count: teamCount }, { count: entityCount }, { count: taskCount }, { count: resourceCount }, { count: projectCount }, { count: openConflictCount }, onboardingProgress] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('teams').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('entities').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
@@ -49,7 +50,10 @@ export default async function DashboardPage() {
     supabaseAdmin.from('resource_assets').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('projects').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('archived_at', null),
     supabaseAdmin.from('planning_conflicts').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('resolved_at', null),
+    getOnboardingProgress(companyId, auth.membership.industryType),
   ])
+
+  const nextOnboardingStep = onboardingProgress.steps.find((status) => !status.done && status.step.key !== 'finish')
 
   const readiness = [
     { label: t('dashboard.readiness.team'), ok: Number(teamCount ?? 0) > 0, href: '/teams' },
@@ -68,6 +72,28 @@ export default async function DashboardPage() {
       actions={<Link href="/settings" className="hidden rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 sm:inline-flex">{t('dashboard.settingsAction')}</Link>}
     >
       <div className="space-y-6">
+        {!onboardingProgress.isComplete && (
+          <section className="coordiqo-card border-amber-200 bg-amber-50 p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Kom igång</p>
+                <h2 className="mt-1 text-lg font-semibold text-amber-950">
+                  {nextOnboardingStep
+                    ? `Nästa steg: ${nextOnboardingStep.step.title}`
+                    : 'Onboarding är nästan klar — slutför för att komma igång'}
+                </h2>
+                <p className="mt-1 text-sm text-amber-800">
+                  {onboardingProgress.completedCount} av {onboardingProgress.totalCount} steg klara.
+                  {nextOnboardingStep?.step.description ? ` ${nextOnboardingStep.step.description}` : ''}
+                </p>
+              </div>
+              <Link href="/onboarding" className="shrink-0 rounded-2xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700">
+                Fortsätt onboarding
+              </Link>
+            </div>
+          </section>
+        )}
+
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
             { label: t('dashboard.staff'), value: staffCount, href: '/staff', hint: t('dashboard.staffHint') },

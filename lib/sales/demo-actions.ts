@@ -8,6 +8,7 @@ import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
 import { toFriendlyError } from '@/lib/errors/friendly-error'
 import { allCompanyCoreModules, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
+import { getOnboardingProgress } from '@/lib/onboarding/progress'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -302,16 +303,89 @@ export async function createCompanyAdminFromDemoRequestAction(formData: FormData
   revalidatePath(`/admin/companies/${companyId}`)
 }
 
-export async function completeOnboardingAction(formData: FormData) {
+function canManageOnboarding(auth: Awaited<ReturnType<typeof requireAuth>>) {
+  return (
+    isPlatformAdminRole(auth.platformRole) ||
+    auth.membership?.companyRole === 'company_admin' ||
+    auth.membership?.companyRole === 'operations_manager'
+  )
+}
+
+export async function updateOnboardingStepAction(formData: FormData) {
   const auth = await requireAuth()
-  if (!auth.membership) redirect('/login')
+  if (!auth.membership) redirect('/setup')
+  if (!canManageOnboarding(auth)) throw new Error('Du saknar behörighet för att uppdatera onboarding.')
+
   const companyId = auth.membership.companyId
-  const completedSteps = values(formData, 'completed_steps')
+  const stepKey = value(formData, 'step_key')
+  const markDone = value(formData, 'done') === 'true'
+  if (!stepKey) throw new Error('Steget kunde inte identifieras. Ladda om sidan och försök igen.')
+
+  const { data: session } = await supabaseAdmin
+    .from('company_onboarding_sessions')
+    .select('id, completed_steps, status')
+    .eq('company_id', companyId)
+    .maybeSingle()
+
+  const currentSteps = new Set<string>((session?.completed_steps ?? []) as string[])
+  if (markDone) currentSteps.add(stepKey)
+  else currentSteps.delete(stepKey)
+
+  const { error } = await supabaseAdmin.from('company_onboarding_sessions').upsert({
+    company_id: companyId,
+    status: session?.status === 'completed' ? 'completed' : 'in_progress',
+    current_step: stepKey,
+    completed_steps: Array.from(currentSteps),
+    created_by: auth.userId,
+  }, { onConflict: 'company_id' })
+  if (error) throw toFriendlyError(error)
+
+  await audit(companyId, auth.userId, markDone ? 'onboarding.step_completed' : 'onboarding.step_reopened', 'company_onboarding_session', companyId, { stepKey })
+  revalidatePath('/onboarding')
+  revalidatePath('/dashboard')
+}
+
+export async function repairOnboardingDefaultsAction() {
+  const auth = await requireAuth()
+  if (!auth.membership) redirect('/setup')
+  if (!canManageOnboarding(auth)) throw new Error('Du saknar behörighet för att reparera standardinställningar.')
+
+  const companyId = auth.membership.companyId
+  const { error } = await supabaseAdmin.rpc('ensure_company_industry_defaults', { target_company_id: companyId })
+  if (error) throw toFriendlyError(error, 'Standardinställningarna kunde inte skapas just nu. Försök igen.')
+
+  await audit(companyId, auth.userId, 'onboarding.defaults_repaired', 'company', companyId)
+  revalidatePath('/onboarding')
+  revalidatePath('/dashboard')
+  revalidatePath('/settings/industry')
+}
+
+export async function completeOnboardingAction() {
+  const auth = await requireAuth()
+  if (!auth.membership) redirect('/setup')
+  if (!canManageOnboarding(auth)) throw new Error('Du saknar behörighet för att slutföra onboarding.')
+
+  const companyId = auth.membership.companyId
+  const progress = await getOnboardingProgress(companyId, auth.membership.industryType)
+
+  if (progress.requiredRemaining.length > 0) {
+    const missing = progress.requiredRemaining.map((status) => status.step.title).join(', ')
+    throw new Error(`Följande steg behöver slutföras först: ${missing}.`)
+  }
+
+  const completedSteps = Array.from(
+    new Set([
+      ...progress.steps.filter((status) => status.done).map((status) => status.step.key),
+      ...(progress.session?.completed_steps ?? []),
+      'finish',
+    ]),
+  )
+
   const { error } = await supabaseAdmin.from('company_onboarding_sessions').upsert({
     company_id: companyId,
     status: 'completed',
     current_step: 'finish',
-    completed_steps: completedSteps.length ? completedSteps : ['company_information', 'industry_model', 'modules', 'staff_team', 'customers_objects', 'planning_defaults', 'finish'],
+    completed_steps: completedSteps,
     completed_by: auth.userId,
     completed_at: new Date().toISOString(),
   }, { onConflict: 'company_id' })
