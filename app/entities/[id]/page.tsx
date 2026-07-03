@@ -20,6 +20,7 @@ import {
   uploadEntityDocumentAction,
 } from '@/lib/platform/actions'
 import { requireCompanyContext } from '@/lib/auth/guards'
+import { hasMinimumCompanyRole } from '@/lib/auth/permissions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function EntityDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -45,7 +46,12 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
     supabaseAdmin.from('entity_addresses').select('*').eq('entity_id', id).order('is_primary', { ascending: false }),
     supabaseAdmin.from('entity_contacts').select('*').eq('entity_id', id).order('is_primary', { ascending: false }),
-    supabaseAdmin.from('entity_type_fields').select('id, entity_type_id, field_key, label, field_type, is_required, is_sensitive, config, placeholder, help_text').is('archived_at', null).order('sort_order'),
+    supabaseAdmin
+      .from('entity_type_fields')
+      .select('id, entity_type_id, field_key, label, field_type, is_required, is_sensitive, config, placeholder, help_text, entity_types!inner(company_id)')
+      .eq('entity_types.company_id', auth.membership.companyId)
+      .is('archived_at', null)
+      .order('sort_order'),
     supabaseAdmin.from('entity_notes').select('id, note, visibility, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
     supabaseAdmin.from('entity_documents').select('id, file_name, storage_path, document_type, status, file_size_bytes, created_at').eq('entity_id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(10),
     supabaseAdmin.from('entity_relations').select('id, relation_type, child_entity_id, notes, entities!entity_relations_child_entity_id_fkey(name)').eq('company_id', auth.membership.companyId).eq('parent_entity_id', id).is('archived_at', null).order('created_at', { ascending: false }),
@@ -56,6 +62,21 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
   ])
   if (!entity) notFound()
 
+  // Sensitive dynamic field values are only shown to roles that may manage
+  // entities. Lower roles see the entity without its sensitive fields.
+  const canViewSensitive = hasMinimumCompanyRole(auth.membership.companyRole, 'planner')
+  const allFields = (fields ?? []) as any[]
+  const visibleFields = allFields.filter((field) => canViewSensitive || !field.is_sensitive)
+  const sensitiveKeys = new Set(allFields.filter((field) => field.is_sensitive).map((field) => field.field_key as string))
+  const safeEntity = canViewSensitive
+    ? entity
+    : {
+        ...entity,
+        custom_fields: Object.fromEntries(
+          Object.entries((entity.custom_fields ?? {}) as Record<string, unknown>).filter(([key]) => !sensitiveKeys.has(key)),
+        ),
+      }
+
   return (
     <AppShell auth={auth} title={entity.name} subtitle={`${entity.entity_types?.label_singular ?? 'Objekt'} · status, relationer och kärnuppgifter.`}>
       <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
@@ -63,10 +84,10 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
           <FormCard title="Redigera objekt">
             <EntityForm
               action={updateEntityAction}
-              entity={entity}
+              entity={safeEntity}
               entityTypes={entityTypes ?? []}
               teams={teams ?? []}
-              fields={fields ?? []}
+              fields={visibleFields}
               submitLabel="Spara ändringar"
             />
           </FormCard>
