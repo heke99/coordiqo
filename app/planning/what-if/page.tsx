@@ -26,11 +26,13 @@ export default async function WhatIfPage() {
         <FormCard title="Simulera scenario" description="Välj scenario och skapa ett utkast som visar kapacitet, konflikter och möjliga tilldelningar utan att publicera direkt.">
           <form action={createPlanningRunAction} className="grid gap-4">
             <input type="hidden" name="unscheduled_only" value="false" />
+            <input type="hidden" name="source_type" value="what_if" />
             <Field label="Scenarionamn"><input name="name" defaultValue={`What-if ${tomorrow}`} className={inputClassName} /></Field>
             <div className="grid gap-4 md:grid-cols-2"><Field label="Från datum"><input name="date_from" type="date" required defaultValue={tomorrow} className={inputClassName} /></Field><Field label="Till datum"><input name="date_to" type="date" required defaultValue={tomorrow} className={inputClassName} /></Field></div>
             <Field label="Scenario"><select name="area_label" className={selectClassName}><option value="Personal sjuk">Personal sjuk</option><option value="Resurs saknas">Resurs saknas</option><option value="Akut uppdrag tillkommer">Akut uppdrag tillkommer</option><option value="Team får extra uppdrag">Team får extra uppdrag</option><option value="Kapacitet minskar">Kapacitet minskar</option></select></Field>
             <Field label="Personal"><select name="staff_profile_id" className={selectClassName}><option value="">Ingen specifik personal</option>{staff?.map((person: any) => <option key={person.id} value={person.id}>{person.full_name}</option>)}</select></Field>
             <Field label="Team"><select name="team_id" className={selectClassName}><option value="">Alla team</option>{teams?.map((team: any) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></Field>
+            <Field label="Låsta tilldelningar"><select name="include_locked_assignments" defaultValue="true" className={selectClassName}><option value="true">Ta hänsyn till låsta tilldelningar</option><option value="false">Ignorera låsta tilldelningar i scenariot</option></select></Field>
             <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Skapa what-if-utkast</button>
           </form>
         </FormCard>

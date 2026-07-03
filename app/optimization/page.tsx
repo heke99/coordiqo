@@ -8,6 +8,7 @@ import { Field, inputClassName, selectClassName } from '@/components/ui/form-car
 import { StatusBadge } from '@/components/ui/status-badge'
 import { approveOptimizationRunAction, runOptimizationAction } from '@/lib/engines/actions'
 import { requireCompanyContext } from '@/lib/auth/guards'
+import { friendlyPlanningReason } from '@/lib/planning/friendly-reasons'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type OptimizationRunRow = {
@@ -136,7 +137,7 @@ export default async function OptimizationPage() {
                 <div key={job.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold text-amber-950">{job.tasks?.title ?? 'Uppdrag'}</p>
-                    <StatusBadge status={job.reason_code} tone="warning" />
+                    <StatusBadge status={friendlyPlanningReason(job.reason_code)} tone="warning" />
                   </div>
                 </div>
               )) : <p className="text-sm text-slate-600">Inga ej planerade jobb i senaste körningen.</p>}

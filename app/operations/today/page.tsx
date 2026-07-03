@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { requireCompanyContext } from '@/lib/auth/guards'
 import { getIndustryPreset } from '@/lib/industry/config'
 import { buildDailyOperationsSummary, buildTaskWaypoint, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime, type DailyAssignmentRow, type DailyDeviationRow, type DailyResourceAssignmentRow, type DailyTaskRow } from '@/lib/operations/operations-engine'
+import { friendlyPlanningReason } from '@/lib/planning/friendly-reasons'
 import type { RoutingWaypoint } from '@/lib/routing/types'
 import { enrichRoutesWithGraphHopper } from '@/lib/routing/graphhopper'
 import { getRoutingProviderEnvironment } from '@/lib/routing/providers'
@@ -120,6 +121,12 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
         {stat('Ej kvitterade', summary.unconfirmedResources, summary.unconfirmedResources ? 'bg-amber-50' : 'bg-white')}
       </section>
 
+      {!routingProvider.configured && (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Restider och avstånd visas som uppskattningar just nu. Planeringen fungerar som vanligt.
+        </div>
+      )}
+
       <div className="mt-5">
         <OperationsMap routes={routes} unassignedWaypoints={unassignedWaypoints} providerLabel={routingProvider.label} providerDetail={routingProvider.detail} mapStyleUrl={routingProvider.styleUrl} />
       </div>
@@ -173,7 +180,7 @@ export default async function TodayOperationsPage({ searchParams }: { searchPara
             <h2 className="text-lg font-semibold text-slate-950">Avvikelser och konflikter</h2>
             <div className="mt-4 space-y-3">
               {deviationRows.slice(0, 5).map((deviation) => <div key={deviation.id} className="rounded-2xl border border-red-100 bg-red-50 p-4"><p className="text-sm font-semibold text-red-900">{deviation.resource_assets?.name ?? 'Resurs'} · {deviation.reason_code ?? 'avvikelse'}</p><p className="mt-1 text-xs text-red-700">{deviation.staff_profiles?.full_name ?? 'Okänd'} · {deviation.comment ?? 'Ingen kommentar'}</p></div>)}
-              {conflictRows.slice(0, 5).map((conflict) => <div key={conflict.id} className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">{conflict.conflict_type}</p><p className="mt-1 text-xs text-amber-800">{conflict.message}</p></div>)}
+              {conflictRows.slice(0, 5).map((conflict) => <div key={conflict.id} className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">{friendlyPlanningReason(conflict.conflict_type, conflict.message)}</p><p className="mt-1 text-xs text-amber-800">{conflict.message}</p></div>)}
               {!deviationRows.length && !conflictRows.length ? <p className="text-sm text-slate-600">Inga öppna avvikelser eller konflikter.</p> : null}
             </div>
           </section>

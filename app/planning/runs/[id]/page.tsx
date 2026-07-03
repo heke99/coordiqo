@@ -7,6 +7,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requireCompanyContext } from '@/lib/auth/guards'
+import { friendlyPlanningReason } from '@/lib/planning/friendly-reasons'
 import { applyCandidateToPlanningDraftItemAction, publishPlanningDraftAction, resolvePlanningConflictAction, savePlanningDraftAsTemplateAction, updatePlanningDraftItemAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -162,7 +163,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                           <div className="flex flex-wrap gap-2"><StatusBadge status={item.status} /><StatusBadge status={item.conflict_level} tone={['hard', 'blocked'].includes(item.conflict_level) ? 'danger' : item.conflict_level === 'none' ? 'success' : 'warning'} /><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">score {item.score}</span><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">risk {item.risk_score ?? 0}</span>{item.conflict_override_approved ? <StatusBadge status="override" tone="warning" /> : null}</div>
                         </div>
 
-                        {itemConflicts.length ? <div className="mt-4 space-y-2">{itemConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"><span className="font-semibold">{conflict.severity}</span> · {conflict.message} <span className="text-xs text-amber-700">({conflict.status})</span></div>)}</div> : null}
+                        {itemConflicts.length ? <div className="mt-4 space-y-2">{itemConflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"><span className="font-semibold">{friendlyPlanningReason(conflict.conflict_type, conflict.message)}</span> · {conflict.message} <span className="text-xs text-amber-700">({conflict.status})</span></div>)}</div> : null}
 
                         {itemCandidates.length ? <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-slate-800">Visa kandidater och score</summary><div className="mt-3 space-y-3">{itemCandidates.slice(0, 5).map((candidate: any) => {
                           const parts = scoreBreakdownByCandidate.get(candidate.id) ?? []
@@ -229,7 +230,7 @@ export default async function PlanningRunDetailPage({ params }: { params: Promis
                   {conflicts?.length ? conflicts.map((conflict: any) => (
                     <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div><p className="font-semibold text-amber-950">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.tasks?.title ?? 'Uppdrag'} · {conflict.status}</p></div>
+                        <div><p className="font-semibold text-amber-950">{friendlyPlanningReason(conflict.conflict_type, conflict.message)}</p><p className="mt-1 text-xs text-amber-800">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.tasks?.title ?? 'Uppdrag'} · {conflict.status}</p></div>
                         <StatusBadge status={conflict.severity} tone={['hard', 'critical', 'blocked'].includes(conflict.severity) ? 'danger' : 'warning'} />
                       </div>
                       {conflict.status === 'open' ? <form action={resolvePlanningConflictAction} className="mt-3 grid gap-2"><input type="hidden" name="id" value={conflict.id} /><select name="resolution_type" defaultValue="resolved" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs"><option value="resolved">Löst</option><option value="override">Undantag</option><option value="accept_risk">Acceptera risk</option></select><input name="reason" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs" placeholder="Orsak" /><button className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-semibold text-white">Spara</button></form> : null}

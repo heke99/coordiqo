@@ -2372,7 +2372,9 @@ export async function createPlanningRunAction(formData: FormData) {
     areaLabel: value(formData, 'area_label'),
     unscheduledOnly: value(formData, 'unscheduled_only') !== 'false',
     includeLockedAssignments: value(formData, 'include_locked_assignments') !== 'false',
-    sourceType: value(formData, 'project_id') ? 'project' : 'planning_run',
+    sourceType: value(formData, 'project_id')
+      ? 'project'
+      : (['what_if', 'replan', 'planning_run'] as const).find((sourceType) => sourceType === value(formData, 'source_type')) ?? 'planning_run',
     sourceId: value(formData, 'project_id'),
     projectId: value(formData, 'project_id'),
     projectPhaseId: value(formData, 'project_phase_id'),

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { requireCompanyContext } from '@/lib/auth/guards'
+import { friendlyPlanningReason } from '@/lib/planning/friendly-reasons'
 import { createPlanningRunAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -26,6 +27,7 @@ export default async function ReplanPage() {
           <form action={createPlanningRunAction} className="grid gap-4">
             <input type="hidden" name="name" value={`Omplanering ${today}`} />
             <input type="hidden" name="unscheduled_only" value="false" />
+            <input type="hidden" name="source_type" value="replan" />
             <Field label="Från datum"><input name="date_from" type="date" required defaultValue={today} className={inputClassName} /></Field>
             <Field label="Till datum"><input name="date_to" type="date" required defaultValue={today} className={inputClassName} /></Field>
             <Field label="Berörd personal"><select name="staff_profile_id" className={selectClassName}><option value="">All personal</option>{staff?.map((person: any) => <option key={person.id} value={person.id}>{person.full_name}</option>)}</select></Field>
@@ -37,7 +39,7 @@ export default async function ReplanPage() {
 
         <section className="space-y-5">
           <div className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Aktiva frånvaror</h2><div className="mt-4 space-y-3">{absences?.length ? absences.map((absence: any) => <div key={absence.id} className="rounded-2xl border border-slate-200 p-4"><p className="font-semibold text-slate-950">{absence.staff_profiles?.full_name ?? 'Personal'} · {absence.absence_types?.name ?? 'Frånvaro'}</p><p className="mt-1 text-xs text-slate-500">{new Date(absence.starts_at).toLocaleString('sv-SE')} – {new Date(absence.ends_at).toLocaleString('sv-SE')}</p></div>) : <p className="text-sm text-slate-600">Ingen aktiv frånvaro hittades.</p>}</div></div>
-          <div className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Öppna konflikter</h2><div className="mt-4 space-y-3">{conflicts?.length ? conflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="font-semibold text-amber-950">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.tasks?.title ?? 'Uppdrag'} · {conflict.staff_profiles?.full_name ?? 'ingen personal'} · {conflict.conflict_type}</p></div>) : <p className="text-sm text-slate-600">Inga öppna konflikter.</p>}</div></div>
+          <div className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Öppna konflikter</h2><div className="mt-4 space-y-3">{conflicts?.length ? conflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="font-semibold text-amber-950">{friendlyPlanningReason(conflict.conflict_type, conflict.message)}</p><p className="mt-1 text-xs text-amber-800">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.tasks?.title ?? 'Uppdrag'} · {conflict.staff_profiles?.full_name ?? 'ingen personal'}</p></div>) : <p className="text-sm text-slate-600">Inga öppna konflikter.</p>}</div></div>
         </section>
       </div>
     </AppShell>
