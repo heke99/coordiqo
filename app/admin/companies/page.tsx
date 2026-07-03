@@ -1,12 +1,10 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { isPlatformAdminRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requirePlatformAdmin } from '@/lib/auth/guards'
 import { updateCompanyGovernanceAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -18,8 +16,7 @@ function tone(status: string | null | undefined) {
 }
 
 export default async function AdminCompaniesPage() {
-  const auth = await requireAuth()
-  if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
+  const auth = await requirePlatformAdmin()
 
   const { data: companies } = await supabaseAdmin
     .from('companies')

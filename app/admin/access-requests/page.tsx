@@ -1,11 +1,9 @@
 export const dynamic = 'force-dynamic'
 
-import { redirect } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { isPlatformAdminRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requirePlatformAdmin } from '@/lib/auth/guards'
 import { reviewCompanyAccessRequestAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -33,8 +31,7 @@ type CompanyOptionRow = {
 }
 
 export default async function AdminAccessRequestsPage() {
-  const auth = await requireAuth()
-  if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
+  const auth = await requirePlatformAdmin()
 
   const [{ data: requests }, { data: companies }] = await Promise.all([
     supabaseAdmin.from('company_access_requests').select('*').order('created_at', { ascending: false }).limit(100),

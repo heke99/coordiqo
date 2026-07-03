@@ -1,13 +1,16 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { COMPANY_ROLE_LABELS, isPlatformAdminRole, type CompanyRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requirePlatformAdmin } from '@/lib/auth/guards'
+import { COMPANY_ROLE_LABELS, type CompanyRole } from '@/lib/auth/permissions'
+import { getIndustryRegistry, getOperationalModels } from '@/lib/industry/registry'
 import { disableCompanyMembershipAction, updateCompanyGovernanceAction, updateCompanyMembershipAction } from '@/lib/platform/actions'
+import { changeCompanyIndustryAction, repairCompanyDefaultsAdminAction, updateCompanyCommercialAction } from '@/lib/platform/admin-actions'
+import { getCompanyReadiness } from '@/lib/platform/company-readiness'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type SaasReadinessRow = {
@@ -47,11 +50,10 @@ type AuditRow = {
 }
 
 export default async function AdminCompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
+  const auth = await requirePlatformAdmin()
   const { id } = await params
 
-  const [companyRes, membersRes, invitesRes, auditRes, readinessRes, statsRes] = await Promise.all([
+  const [companyRes, membersRes, invitesRes, auditRes, readinessRes, statsRes, companyReadiness, industryRegistry, operationalModels, packagesRes] = await Promise.all([
     supabaseAdmin.from('companies').select('*').eq('id', id).maybeSingle(),
     supabaseAdmin.from('company_memberships').select('id, user_id, role, status, is_default, created_at, disabled_at, disabled_reason').eq('company_id', id).order('created_at', { ascending: false }),
     supabaseAdmin.from('company_invitations').select('id, email, full_name, role, status, email_delivery_status, created_at, expires_at').eq('company_id', id).order('created_at', { ascending: false }).limit(10),
@@ -64,6 +66,10 @@ export default async function AdminCompanyDetailPage({ params }: { params: Promi
       supabaseAdmin.from('planning_runs').select('id', { count: 'exact', head: true }).eq('company_id', id),
       supabaseAdmin.from('entity_documents').select('id', { count: 'exact', head: true }).eq('company_id', id),
     ]),
+    getCompanyReadiness(id),
+    getIndustryRegistry(),
+    getOperationalModels(),
+    supabaseAdmin.from('packages').select('code, name_sv').is('archived_at', null).order('sort_order'),
   ])
 
   const company = companyRes.data
@@ -110,6 +116,107 @@ export default async function AdminCompanyDetailPage({ params }: { params: Promi
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {stats.map((stat) => <div key={stat.label} className="coordiqo-card p-5"><p className="text-sm text-slate-500">{stat.label}</p><p className="mt-2 text-3xl font-semibold text-slate-950">{stat.value}</p></div>)}
+        </section>
+
+        <section className="coordiqo-card p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Beredskapskontroll</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {companyReadiness.isReady
+                  ? 'Bolaget uppfyller alla kritiska krav för drift.'
+                  : `${companyReadiness.criticalCount} kritiska och ${companyReadiness.warningCount} varningar behöver ses över.`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={companyReadiness.isReady ? 'Redo' : 'Ej redo'} tone={companyReadiness.isReady ? 'success' : 'danger'} />
+              <form action={repairCompanyDefaultsAdminAction}>
+                <input type="hidden" name="company_id" value={company.id} />
+                <button className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800">Reparera standarder</button>
+              </form>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {companyReadiness.checks.map((item) => (
+              <div key={item.key} className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-950">{item.label}</p>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${item.level === 'ok' ? 'bg-emerald-50 text-emerald-700' : item.level === 'warning' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                    {item.level === 'ok' ? 'OK' : item.level === 'warning' ? 'Varning' : 'Kritiskt'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
+                {item.fixHint ? <p className="mt-1 text-xs text-slate-400">{item.fixHint}</p> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="grid gap-5 lg:grid-cols-2">
+          <div className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Byt bransch säkert</h2>
+            <p className="mt-1 text-sm text-slate-500">Uppdaterar branschprofil och skapar saknat standardinnehåll. Befintliga typer, uppdrag och data ligger kvar.</p>
+            <form action={changeCompanyIndustryAction} className="mt-4 grid gap-3">
+              <input type="hidden" name="company_id" value={company.id} />
+              <select name="industry_type" defaultValue={company.industry_type ?? 'other'} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                {industryRegistry.filter((profile) => profile.isActive || profile.code === company.industry_type).map((profile) => (
+                  <option key={profile.code} value={profile.code}>{profile.nameSv}</option>
+                ))}
+              </select>
+              <select name="operational_model" defaultValue={company.operational_model ?? ''} className="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                <option value="">Branschens standard</option>
+                {operationalModels.map((model) => <option key={model.code} value={model.code}>{model.label}</option>)}
+              </select>
+              <button className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Byt bransch</button>
+            </form>
+          </div>
+
+          <div className="coordiqo-card p-5">
+            <h2 className="text-lg font-semibold text-slate-950">Kommersiell status</h2>
+            <p className="mt-1 text-sm text-slate-500">Paket, avtal, pilotperiod och ansvariga för kundrelationen.</p>
+            <form action={updateCompanyCommercialAction} className="mt-4 grid gap-3">
+              <input type="hidden" name="company_id" value={company.id} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-medium text-slate-600">Paket
+                  <select name="package_code" defaultValue={company.package_code ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                    <option value="">Inget paket valt</option>
+                    {(packagesRes.data ?? []).map((pkg: any) => <option key={pkg.code} value={pkg.code}>{pkg.name_sv}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-slate-600">Avtalsstatus
+                  <select name="contract_status" defaultValue={company.contract_status ?? 'none'} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                    <option value="none">Inget avtal</option>
+                    <option value="demo">Demo</option>
+                    <option value="pilot">Pilot</option>
+                    <option value="active">Aktivt avtal</option>
+                    <option value="cancelled">Avslutat</option>
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-slate-600">Pilot start
+                  <input name="pilot_starts_on" type="date" defaultValue={company.pilot_starts_on ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-medium text-slate-600">Pilot slut
+                  <input name="pilot_ends_on" type="date" defaultValue={company.pilot_ends_on ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-medium text-slate-600">Faktura-e-post
+                  <input name="billing_contact_email" type="email" defaultValue={company.billing_contact_email ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-medium text-slate-600">Faktura-orgnr
+                  <input name="billing_org_number" defaultValue={company.billing_org_number ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-medium text-slate-600">Förnyelsedatum
+                  <input name="renewal_date" type="date" defaultValue={company.renewal_date ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <label className="text-xs font-medium text-slate-600">Uppsägningsdatum
+                  <input name="cancellation_date" type="date" defaultValue={company.cancellation_date ?? ''} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+              </div>
+              <label className="text-xs font-medium text-slate-600">Interna noteringar
+                <textarea name="commercial_notes" defaultValue={company.commercial_notes ?? ''} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </label>
+              <button className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Spara kommersiell status</button>
+            </form>
+          </div>
         </section>
 
         {readiness ? (

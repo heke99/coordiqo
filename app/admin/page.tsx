@@ -1,17 +1,14 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { isPlatformAdminRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requirePlatformAdmin } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function AdminPage() {
-  const auth = await requireAuth()
-  if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
+  const auth = await requirePlatformAdmin()
 
   const [companiesRes, membershipsRes, requestsRes, invitesRes, auditRes, notificationsRes] = await Promise.all([
     supabaseAdmin.from('companies').select('id, name, status, lifecycle_status, industry_type, operational_model, created_at').order('created_at', { ascending: false }).limit(8),
@@ -43,6 +40,16 @@ export default async function AdminPage() {
     { label: 'Olästa notiser', value: String(unreadNotifications), href: '/notifications' },
   ]
 
+  const adminLinks = [
+    { label: 'Demoansökningar och leads', href: '/admin/demo-requests' },
+    { label: 'Branscher', href: '/admin/industries' },
+    { label: 'Supportärenden', href: '/admin/support' },
+    { label: 'Go-live-kontroll', href: '/admin/go-live' },
+    { label: 'Plattformshälsa', href: '/admin/health' },
+    { label: 'Integrationer', href: '/admin/integrations' },
+    { label: 'Plattformsaudit', href: '/admin/audit' },
+  ]
+
   return (
     <AppShell auth={auth} title="Superadmin" subtitle="Plattformsöversikt för bolag, ansökningar, behörighet, audit och driftstatus.">
       <div className="space-y-5">
@@ -53,6 +60,17 @@ export default async function AdminPage() {
               <p className="mt-2 text-3xl font-semibold text-slate-950">{card.value}</p>
             </Link>
           ))}
+        </section>
+
+        <section className="coordiqo-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">Kontrollcenter</h2>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {adminLinks.map((link) => (
+              <Link key={link.href} href={link.href} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                {link.label}
+              </Link>
+            ))}
+          </div>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-2">

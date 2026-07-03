@@ -1,13 +1,11 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { isPlatformAdminRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requirePlatformAdmin } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type DemoRequestRow = {
@@ -28,8 +26,7 @@ type DemoRequestRow = {
 const statuses = ['new', 'contacted', 'demo_booked', 'offer_sent', 'won', 'lost', 'onboarding_started']
 
 export default async function AdminDemoRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; industry?: string; assigned_to?: string; q?: string }> }) {
-  const auth = await requireAuth()
-  if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
+  const auth = await requirePlatformAdmin()
   const params = await searchParams
 
   let query = supabaseAdmin

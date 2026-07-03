@@ -1,21 +1,19 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 
 import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { isPlatformAdminRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requirePlatformAdmin } from '@/lib/auth/guards'
 import { addDemoRequestNoteAction, createCompanyAdminFromDemoRequestAction, createCompanyFromDemoRequestAction, updateDemoRequestAction } from '@/lib/sales/demo-actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const statuses = ['new', 'contacted', 'demo_booked', 'offer_sent', 'won', 'lost', 'onboarding_started']
 
 export default async function AdminDemoRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!isPlatformAdminRole(auth.platformRole)) redirect('/dashboard')
+  const auth = await requirePlatformAdmin()
   const { id } = await params
 
   const [{ data: request }, { data: notes }, { data: admins }] = await Promise.all([
