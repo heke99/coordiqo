@@ -436,6 +436,10 @@ export async function updateOnboardingStepAction(formData: FormData) {
   }, { onConflict: 'company_id' })
   if (error) throw toFriendlyError(error)
 
+  if (!session || session.status === 'not_started') {
+    await trackProductEvent('onboarding_started', { companyId, userId: auth.userId })
+  }
+
   await audit(companyId, auth.userId, markDone ? 'onboarding.step_completed' : 'onboarding.step_reopened', 'company_onboarding_session', companyId, { stepKey })
   revalidatePath('/onboarding')
   revalidatePath('/dashboard')
@@ -487,6 +491,7 @@ export async function completeOnboardingAction() {
   }, { onConflict: 'company_id' })
   if (error) throw toFriendlyError(error)
   await audit(companyId, auth.userId, 'onboarding.completed', 'company_onboarding_session', companyId)
+  await trackProductEvent('onboarding_completed', { companyId, userId: auth.userId })
   redirect('/dashboard')
 }
 

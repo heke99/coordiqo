@@ -15,6 +15,7 @@ import { publishPlanningDraft } from '@/lib/planning/publish-draft'
 import { evaluateResourceFit, mergeEvaluationWithResourceFit, type ExistingResourceAssignment, type PlanningResourceAsset, type PlanningResourceRequirement, type ResourceFitResult } from '@/lib/planning/resource-planning'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { evaluateTaskAssignment } from '@/lib/planning/rule-engine'
+import { trackFirstProductEvent } from '@/lib/analytics/product-events'
 import { allCompanyCoreModules } from '@/lib/industry/config'
 import { getIndustryProfile, invalidateCompanyRuntimeConfigCache } from '@/lib/industry/registry'
 import { normalizeLocale } from '@/lib/i18n/config'
@@ -1544,6 +1545,7 @@ export async function createTaskAction(formData: FormData) {
   if (error) throw new Error(error.message)
   await supabaseAdmin.from('task_status_history').insert({ company_id: auth.membership!.companyId, task_id: data.id, new_status: value(formData, 'status') ?? 'unscheduled', changed_by: auth.userId })
   await audit(auth.membership!.companyId, auth.userId, 'create', 'task', data.id, { title })
+  await trackFirstProductEvent('first_task_created', auth.membership!.companyId, auth.userId)
   revalidatePath('/tasks')
   redirect(`/tasks/${data.id}`)
 }
@@ -2383,6 +2385,7 @@ export async function createPlanningRunAction(formData: FormData) {
   })
 
   await audit(auth.membership!.companyId, auth.userId, 'create', 'planning_run', result.runId, result)
+  await trackFirstProductEvent('first_planning_run_created', auth.membership!.companyId, auth.userId)
   revalidatePath('/planning')
   revalidatePath('/planning/runs')
   redirect(`/planning/runs/${result.runId}`)
@@ -2404,6 +2407,7 @@ export async function publishPlanningDraftAction(formData: FormData) {
   })
 
   await audit(auth.membership!.companyId, auth.userId, 'publish', 'planning_draft', draftId, result)
+  await trackFirstProductEvent('first_assignment_published', auth.membership!.companyId, auth.userId)
   revalidatePath('/planning')
   revalidatePath('/planning/runs')
   redirect('/planning')

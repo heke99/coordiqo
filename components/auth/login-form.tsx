@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
+import { trackLoginEventAction } from '@/lib/analytics/actions'
 import { createClient } from '@/lib/supabase/client'
 
 function getFriendlyError(message: string) {
@@ -52,6 +53,8 @@ export function LoginForm() {
       setError(getFriendlyError(error.message))
       return
     }
+
+    void trackLoginEventAction()
 
     const nextPath = searchParams.get('next')
     const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
