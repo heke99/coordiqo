@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createProjectTemplateAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -23,8 +23,7 @@ const defaultRulesJson = JSON.stringify([
 ], null, 2)
 
 export default async function ProjectTemplatesPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: templates }, { data: rules }, { data: questions }] = await Promise.all([
     supabaseAdmin

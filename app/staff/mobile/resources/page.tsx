@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Field, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createExtraResourceUsageAction, updateResourceAssignmentStatusAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function todayBounds() {
@@ -85,8 +85,7 @@ function ResourceActionButtons({ assignment, resources, returnPath }: ResourceAc
 }
 
 export default async function MobileResourcesPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { start, end, date } = todayBounds()
   const companyId = auth.membership.companyId
   const adminPreview = canPreviewCompanyResources(auth.membership.companyRole)

@@ -6,12 +6,11 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { archiveTeamAction, updateTeamAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
 
   const [{ data: team }, { data: members }, { data: staff }, { data: upcomingShifts }, { data: templateTargets }, { data: staffingRequirements }] = await Promise.all([

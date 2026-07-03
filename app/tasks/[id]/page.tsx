@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { TaskForm } from '@/components/tasks/task-form'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { archiveResourceRequirementAction, archiveTaskAction, archiveTaskRequirementAction, createManualTaskAssignmentAction, createResourceRequirementAction, createTaskCommentAction, createTaskRequirementAction, resolveRuleViolationAction, runTaskRuleCheckAction, updateTaskAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -19,8 +19,7 @@ function datetimeLocal(value: string | null | undefined) {
 }
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
 
   const [{ data: task }, { data: taskTypes }, { data: entities }, { data: teams }, { data: staff }, { data: shifts }, { data: assignments }, { data: planningConflicts }, { data: workOrders }, { data: comments }, { data: history }, { data: skills }, { data: certifications }, { data: requirements }, { data: violations }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([

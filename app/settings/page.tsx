@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { localeLabels, supportedLocales } from '@/lib/i18n/config'
 import { createTranslator } from '@/lib/i18n/labels'
 import { updateCompanyLocalizationSettingsAction } from '@/lib/platform/actions'
@@ -84,8 +84,7 @@ const settingsSections = [
 ]
 
 export default async function SettingsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { t } = createTranslator(auth.membership.locale)
   const { data: companySettings } = await supabaseAdmin
     .from('company_settings')

@@ -7,12 +7,11 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createAvailabilityBlockAction, refreshAvailabilityConflictsAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function AvailabilityPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const [{ data: staff }, { data: teams }, { data: blocks }, { data: conflicts }] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('full_name'),
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),

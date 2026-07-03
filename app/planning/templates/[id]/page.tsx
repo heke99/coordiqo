@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createPlanningRunFromTemplateAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
@@ -17,8 +17,7 @@ function minutesLabel(minutes: number | null | undefined) {
 }
 
 export default async function PlanningTemplateDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
 
   const [{ data: template }, { data: items }, { data: applications }] = await Promise.all([

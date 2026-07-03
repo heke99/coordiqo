@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { OperationsMap } from '@/components/maps/operations-map'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { getIndustryPreset } from '@/lib/industry/config'
 import { buildDailyOperationsSummary, buildTaskWaypoint, getIndustryTaskFocus, getStopLabel, groupAssignmentsByRoute, getTaskSortTime, type DailyAssignmentRow, type DailyDeviationRow, type DailyResourceAssignmentRow, type DailyTaskRow } from '@/lib/operations/operations-engine'
 import type { RoutingWaypoint } from '@/lib/routing/types'
@@ -31,8 +31,7 @@ function stat(label: string, value: number, tone: string = 'bg-white') {
 }
 
 export default async function TodayOperationsPage({ searchParams }: { searchParams?: Promise<{ date?: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const params = await searchParams
   const selectedDate = params?.date ?? new Date().toISOString().slice(0, 10)
   const bounds = dateBounds(selectedDate)

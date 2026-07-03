@@ -3,12 +3,11 @@ export const dynamic = 'force-dynamic'
 import { AppShell } from '@/components/app/app-shell'
 import { ShiftCreateForm } from '@/components/schedule/shift-create-form'
 import { FormCard } from '@/components/ui/form-card'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function NewShiftPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: staff }, { data: teams }] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('full_name'),

@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createDeviationAction, createMobileExecutionEventAction } from '@/lib/engines/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function todayBounds() {
@@ -40,8 +40,7 @@ type AssignmentRow = {
 }
 
 export default async function MobileDayPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { start, end } = todayBounds()
   const companyId = auth.membership.companyId
   const adminPreview = canPreviewCompanyDay(auth.membership.companyRole)

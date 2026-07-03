@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function hours(minutes: number | null | undefined) {
@@ -17,13 +17,12 @@ function money(value: number | null | undefined, currency = 'SEK') {
 }
 
 export default async function ProjectsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: projects }, { data: templates }] = await Promise.all([
     supabaseAdmin
       .from('projects')
-      .select('id, name, status, priority, target_start_date, deadline_date, planned_workers, estimated_effort_minutes, estimated_calendar_minutes, estimated_total_cost, currency, created_at, entities(display_name), project_templates(name)')
+      .select('id, name, status, priority, target_start_date, deadline_date, planned_workers, estimated_effort_minutes, estimated_calendar_minutes, estimated_total_cost, currency, created_at, entities(name), project_templates(name)')
       .eq('company_id', auth.membership.companyId)
       .is('archived_at', null)
       .order('created_at', { ascending: false })
@@ -55,7 +54,7 @@ export default async function ProjectsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-semibold text-slate-950">{project.name}</p>
-                  <p className="mt-1 text-sm text-slate-500">{project.entities?.display_name ?? 'Inget objekt'} · {project.project_templates?.name ?? 'Egen mall'} · {project.planned_workers ?? 1} personal</p>
+                  <p className="mt-1 text-sm text-slate-500">{project.entities?.name ?? 'Inget objekt'} · {project.project_templates?.name ?? 'Egen mall'} · {project.planned_workers ?? 1} personal</p>
                   <p className="mt-2 text-xs text-slate-500">{hours(project.estimated_effort_minutes)} arbetstimmar · ca {hours(project.estimated_calendar_minutes)} schematimmar · {money(project.estimated_total_cost, project.currency ?? 'SEK')}</p>
                 </div>
                 <div className="flex flex-wrap gap-2"><StatusBadge status={project.status} /><StatusBadge status={project.priority} /></div>

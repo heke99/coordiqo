@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { addAvailabilityTemplateItemAction, applyAvailabilityTemplateAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const weekdays = [
@@ -14,8 +14,7 @@ const weekdays = [
 ]
 
 export default async function AvailabilityTemplateDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
   const [{ data: template }, { data: items }, { data: targets }, { data: apps }] = await Promise.all([
     supabaseAdmin.from('availability_templates').select('*').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),

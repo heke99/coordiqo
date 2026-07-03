@@ -7,14 +7,13 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { SearchFilter } from '@/components/ui/search-filter'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { canManageStaff } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type StaffPageProps = { searchParams?: Promise<{ q?: string; status?: string }> }
 
 export default async function StaffPage({ searchParams }: StaffPageProps) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const params = await searchParams
   const q = params?.q?.trim() ?? ''
   const status = params?.status ?? 'active'

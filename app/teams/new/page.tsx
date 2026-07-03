@@ -3,12 +3,11 @@ export const dynamic = 'force-dynamic'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { createTeamAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function NewTeamPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const { data: staff } = await supabaseAdmin
     .from('staff_profiles')

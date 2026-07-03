@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createBillingUnderlayAction } from '@/lib/engines/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type BillingUnderlayRow = {
@@ -25,8 +25,7 @@ function money(value: number, currency: string) {
 }
 
 export default async function ReportsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const companyId = auth.membership.companyId
   const today = new Date().toISOString().slice(0, 10)
   const periodStart = today.slice(0, 8) + '01'

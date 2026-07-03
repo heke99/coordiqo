@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { AppShell } from '@/components/app/app-shell'
 import { PermissionMatrix } from '@/components/settings/permission-matrix'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type PermissionRow = {
@@ -13,8 +13,7 @@ type PermissionRow = {
 }
 
 export default async function SettingsPermissionsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const { data: permissions } = await supabaseAdmin
     .from('company_role_permissions')

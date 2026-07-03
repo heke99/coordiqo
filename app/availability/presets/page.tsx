@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { SearchFilter } from '@/components/ui/search-filter'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { duplicateSystemShiftPresetAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function timeLabel(value: string | null) {
@@ -15,8 +15,7 @@ function timeLabel(value: string | null) {
 }
 
 export default async function ShiftPresetsPage({ searchParams }: { searchParams: Promise<{ q?: string; scope?: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const params = await searchParams
   const q = params.q?.trim()
   const scope = params.scope?.trim()

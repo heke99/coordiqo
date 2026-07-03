@@ -4,13 +4,12 @@ import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { archiveCertificationAction, archiveSkillAction, createCertificationAction, createSkillAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function SkillsSettingsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: skills }, { data: certifications }, { data: rules }] = await Promise.all([
     supabaseAdmin.from('skills').select('*').eq('company_id', auth.membership.companyId).is('archived_at', null).order('category').order('name'),

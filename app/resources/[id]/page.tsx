@@ -7,7 +7,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { archiveResourceAction, updateResourceAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function statusTone(status: string | null | undefined) {
@@ -18,8 +18,7 @@ function statusTone(status: string | null | undefined) {
 }
 
 export default async function ResourceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
   const [{ data: resource }, { data: types }, { data: staff }, { data: teams }, { data: assignments }, { data: events }, { data: deviations }, { data: tasks }] = await Promise.all([
     supabaseAdmin.from('resource_assets').select('*, resource_types(name)').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),

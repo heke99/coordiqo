@@ -7,7 +7,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { ResourceRequirementPanel } from '@/components/resources/resource-requirement-panel'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { approveProjectCalculationRunAction, createProjectActualsAction, createProjectCalculationRunAction } from '@/lib/engines/actions'
 import { createPlanningRunAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -21,14 +21,13 @@ function money(value: number | null | undefined, currency = 'SEK') {
 }
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
 
   const [{ data: project }, { data: phases }, { data: workItems }, { data: tasks }, { data: runs }, { data: calculationRuns }, { data: actuals }, { data: resourceTypes }, { data: resources }, { data: resourceRequirements }] = await Promise.all([
     supabaseAdmin
       .from('projects')
-      .select('*, entities(display_name), project_templates(name)')
+      .select('*, entities(name), project_templates(name)')
       .eq('id', id)
       .eq('company_id', auth.membership.companyId)
       .is('archived_at', null)
@@ -103,7 +102,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <section className="coordiqo-card p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm text-slate-500">{project.entities?.display_name ?? 'Inget objekt'} · {project.project_templates?.name ?? 'Egen mall'} · {project.planned_workers ?? 1} personal</p>
+                <p className="text-sm text-slate-500">{project.entities?.name ?? 'Inget objekt'} · {project.project_templates?.name ?? 'Egen mall'} · {project.planned_workers ?? 1} personal</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{project.description ?? 'Ingen beskrivning.'}</p>
               </div>
               <div className="flex flex-wrap gap-2"><StatusBadge status={project.status} /><StatusBadge status={project.priority} /></div>

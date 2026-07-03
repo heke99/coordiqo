@@ -6,15 +6,14 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { archiveShiftAction, copyShiftAction, updateShiftAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 function dateValue(value: string) { return new Date(value).toISOString().slice(0, 10) }
 function timeValue(value: string) { return new Date(value).toISOString().slice(11, 16) }
 
 export default async function ShiftDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
   const [{ data: shift }, { data: staff }, { data: teams }, { data: conflicts }] = await Promise.all([
     supabaseAdmin.from('shifts').select('*').eq('id', id).eq('company_id', auth.membership.companyId).is('archived_at', null).maybeSingle(),

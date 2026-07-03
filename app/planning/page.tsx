@@ -5,13 +5,12 @@ import Link from 'next/link'
 import { AppShell } from '@/components/app/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { resolvePlanningConflictAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function PlanningPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: runs }, { data: drafts }, { data: conflicts }, { data: assignments }] = await Promise.all([
     supabaseAdmin.from('planning_runs').select('id, name, status, date_from, date_to, created_at, summary').eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(8),

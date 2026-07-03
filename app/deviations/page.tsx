@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createDeviationAction, updateDeviationStatusAction } from '@/lib/engines/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type DeviationRow = {
@@ -25,8 +25,7 @@ type DeviationRow = {
 }
 
 export default async function DeviationsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const companyId = auth.membership.companyId
   const [{ data: deviations }, { data: tasks }, { data: projects }] = await Promise.all([
     supabaseAdmin.from('deviations').select('id, title, description, status, priority, customer_impact, route_impact, billing_impact, sla_risk, created_at, tasks(title), projects(name)').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(80),

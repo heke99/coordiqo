@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { SearchFilter } from '@/components/ui/search-filter'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { canManageTeams } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type TeamsPageProps = {
@@ -15,8 +15,7 @@ type TeamsPageProps = {
 }
 
 export default async function TeamsPage({ searchParams }: TeamsPageProps) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const params = await searchParams
   const q = params?.q?.trim() ?? ''

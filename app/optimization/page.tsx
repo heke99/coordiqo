@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { approveOptimizationRunAction, runOptimizationAction } from '@/lib/engines/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type OptimizationRunRow = {
@@ -40,8 +40,7 @@ type UnassignedRow = {
 }
 
 export default async function OptimizationPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const companyId = auth.membership.companyId
   const [{ data: runs }, { data: items }, { data: unassigned }, { count: taskCount }] = await Promise.all([
     supabaseAdmin.from('optimization_runs').select('id, plan_label, provider, status, blocking_count, warning_count, summary, created_at').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(6),

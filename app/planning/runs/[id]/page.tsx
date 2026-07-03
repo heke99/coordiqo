@@ -6,13 +6,12 @@ import { notFound } from 'next/navigation'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { applyCandidateToPlanningDraftItemAction, publishPlanningDraftAction, resolvePlanningConflictAction, savePlanningDraftAsTemplateAction, updatePlanningDraftItemAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function PlanningRunDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { id } = await params
 
   const [{ data: run }, { data: draft }, { data: staff }, { data: teams }, { data: shifts }] = await Promise.all([

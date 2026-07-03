@@ -4,13 +4,12 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName } from '@/components/ui/form-card'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createPlanningRunAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function NewPlanningRunPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: teams }, { data: staff }, { data: taskTypes }, { data: projects }] = await Promise.all([
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),

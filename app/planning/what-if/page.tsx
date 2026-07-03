@@ -4,19 +4,20 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName } from '@/components/ui/form-card'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createPlanningRunAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function WhatIfPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+  const auth = await requireCompanyContext()
+  const tomorrowDate = new Date()
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+  const tomorrow = tomorrowDate.toISOString().slice(0, 10)
 
   const [{ data: staff }, { data: teams }, { data: resources }] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).eq('status', 'active').is('archived_at', null).order('full_name'),
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
-    supabaseAdmin.from('resources').select('id, name, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(100),
+    supabaseAdmin.from('resource_assets').select('id, name, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(100),
   ])
 
   return (

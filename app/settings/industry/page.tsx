@@ -3,14 +3,13 @@ export const dynamic = 'force-dynamic'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { INDUSTRY_PRESETS, OPERATIONAL_MODEL_HELP, OPERATIONAL_MODEL_LABELS, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
 import { updateCompanyIndustrySettingsAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function IndustrySettingsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: runtimeConfig }, { data: taskTypes }, { data: resourceTypes }] = await Promise.all([
     supabaseAdmin

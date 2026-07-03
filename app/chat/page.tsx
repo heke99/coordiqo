@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createChatChannelAction, createChatMessageAction } from '@/lib/engines/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { ChatAutoRefresh } from './auto-refresh'
 
@@ -28,8 +28,7 @@ type MessageRow = {
 }
 
 export default async function ChatPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const companyId = auth.membership.companyId
   const [{ data: channels }, { data: messages }] = await Promise.all([
     supabaseAdmin.from('chat_channels').select('id, name, description, channel_type, created_at').eq('company_id', companyId).is('archived_at', null).order('created_at', { ascending: false }).limit(40),

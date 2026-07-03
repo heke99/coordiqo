@@ -7,7 +7,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { getAiProviderConfig, isLangflowConfigured } from '@/lib/ai/orchestration'
 import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
 import { messagingReadiness } from '@/lib/messaging/providers'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { getFoundationHealthChecks } from '@/lib/tenancy/foundation-health'
 
 function toneFor(check: { ok: boolean; severity: 'info' | 'warning' | 'critical' }) {
@@ -18,8 +18,7 @@ function toneFor(check: { ok: boolean; severity: 'info' | 'warning' | 'critical'
 }
 
 export default async function SettingsHealthPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const foundationChecks = await getFoundationHealthChecks(auth.membership.companyId)
   const messaging = messagingReadiness()

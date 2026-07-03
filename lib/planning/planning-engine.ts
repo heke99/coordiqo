@@ -337,7 +337,7 @@ export async function createPlanningRunWithDraft(input: CreatePlanningRunInput) 
       const best = candidates.find((candidate) => candidate.evaluation.eligible) ?? candidates[0] ?? null
       const topCandidates = candidates.slice(0, 5)
       let candidateId: string | null = null
-      let evaluation = best?.evaluation ?? null
+      const evaluation = best?.evaluation ?? null
       const selectedResourceFit: ResourceFitResult | null = best?.resourceFit ?? null
       const candidateRowIds: string[] = []
 

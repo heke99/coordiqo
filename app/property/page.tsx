@@ -5,13 +5,12 @@ import Link from 'next/link'
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createInboundEmailAction, createPropertyEmailChannelAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function PropertyPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: entityTypes }, { data: entities }, { data: channels }, { data: emails }, { data: serviceRequests }] = await Promise.all([
     supabaseAdmin.from('entity_types').select('id, code, label_singular, label_plural').eq('company_id', auth.membership.companyId).is('archived_at', null).order('sort_order'),

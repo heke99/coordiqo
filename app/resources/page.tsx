@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { SearchFilter } from '@/components/ui/search-filter'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { canManageResources } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createResourceTypeAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { Field, inputClassName, textareaClassName } from '@/components/ui/form-card'
@@ -31,8 +31,7 @@ function statusTone(status: string | null | undefined) {
 }
 
 export default async function ResourcesPage({ searchParams }: ResourcesPageProps) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const params = await searchParams
   const q = params?.q?.trim() ?? ''
   const requestedStatus = params?.status ?? 'all'

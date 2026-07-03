@@ -4,13 +4,12 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName, textareaClassName } from '@/components/ui/form-card'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createProjectAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function NewProjectPage({ searchParams }: { searchParams: Promise<{ template?: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const params = await searchParams
 
   const [{ data: templates }, { data: entities }, { data: teams }, { data: staff }] = await Promise.all([
@@ -22,7 +21,7 @@ export default async function NewProjectPage({ searchParams }: { searchParams: P
       .or(`scope.eq.system,company_id.eq.${auth.membership.companyId}`)
       .order('scope')
       .order('name'),
-    supabaseAdmin.from('entities').select('id, display_name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('display_name').limit(200),
+    supabaseAdmin.from('entities').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name').limit(200),
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).eq('status', 'active').is('archived_at', null).order('full_name'),
   ])
@@ -43,7 +42,7 @@ export default async function NewProjectPage({ searchParams }: { searchParams: P
           <Field label="Beskrivning"><textarea name="description" className={textareaClassName} placeholder="Vad ska göras? Ex. renovera hela fastigheten, vissa rum, fönster eller gemensamma ytor." /></Field>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <Field label="Objekt/fastighet"><select name="entity_id" className={selectClassName}><option value="">Inget objekt valt</option>{entities?.map((entity: any) => <option key={entity.id} value={entity.id}>{entity.display_name}</option>)}</select></Field>
+            <Field label="Objekt/fastighet"><select name="entity_id" className={selectClassName}><option value="">Inget objekt valt</option>{entities?.map((entity: any) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
             <Field label="Startdatum"><input name="target_start_date" type="date" defaultValue={today} className={inputClassName} /></Field>
             <Field label="Deadline"><input name="deadline_date" type="date" className={inputClassName} /></Field>
           </div>

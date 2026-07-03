@@ -4,7 +4,7 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type SaasReadinessRow = {
@@ -19,8 +19,7 @@ type SaasReadinessRow = {
 }
 
 export default async function PilotReadinessPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const companyId = auth.membership.companyId
   const [{ data: readiness }, { count: staff }, { count: tasks }, { count: resources }, { count: projects }, { count: billing }] = await Promise.all([
     supabaseAdmin.from('coordiqo_saas_readiness_v').select('*').eq('company_id', companyId).maybeSingle(),

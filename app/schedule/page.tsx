@@ -9,7 +9,7 @@ import { Field, FormCard, inputClassName, selectClassName } from '@/components/u
 import { SearchFilter } from '@/components/ui/search-filter'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { bulkUpdateShiftsAction, copyWeekAction, quickAbsenceAction } from '@/lib/platform/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type StaffOption = {
@@ -89,8 +89,7 @@ function defaultMonday() {
 }
 
 export default async function SchedulePage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string; status?: string; preset?: string; bulk_run?: string }> }) {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const params = await searchParams
   const q = params.q?.trim()
   const date = params.date?.trim()

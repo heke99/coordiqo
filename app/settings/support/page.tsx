@@ -2,13 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createSupportSessionAction, endSupportSessionAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function SettingsSupportPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const [{ data: memberships }, { data: sessions }] = await Promise.all([
     supabaseAdmin.from('company_memberships').select('id, user_id, role, status').eq('company_id', auth.membership.companyId).is('archived_at', null).order('created_at', { ascending: false }),

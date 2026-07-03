@@ -3,13 +3,12 @@ export const dynamic = 'force-dynamic'
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { COMPANY_ROLE_LABELS, type CompanyRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { cancelInvitationAction, createInvitationAction, resendInvitationAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function SettingsInvitationsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
 
   const { data: invitations } = await supabaseAdmin
     .from('company_invitations')

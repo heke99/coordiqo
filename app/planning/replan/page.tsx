@@ -4,20 +4,19 @@ import Link from 'next/link'
 
 import { AppShell } from '@/components/app/app-shell'
 import { Field, FormCard, inputClassName, selectClassName } from '@/components/ui/form-card'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { createPlanningRunAction } from '@/lib/platform/actions'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function ReplanPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const today = new Date().toISOString().slice(0, 10)
 
   const [{ data: staff }, { data: teams }, { data: conflicts }, { data: absences }] = await Promise.all([
     supabaseAdmin.from('staff_profiles').select('id, full_name').eq('company_id', auth.membership.companyId).eq('status', 'active').is('archived_at', null).order('full_name'),
     supabaseAdmin.from('teams').select('id, name').eq('company_id', auth.membership.companyId).is('archived_at', null).order('name'),
     supabaseAdmin.from('planning_conflicts').select('id, conflict_type, severity, message, tasks(title), staff_profiles(full_name)').eq('company_id', auth.membership.companyId).eq('status', 'open').order('created_at', { ascending: false }).limit(10),
-    supabaseAdmin.from('absences').select('id, start_at, end_at, absence_types(name), staff_profiles(full_name)').eq('company_id', auth.membership.companyId).in('status', ['approved', 'active']).order('start_at', { ascending: true }).limit(10),
+    supabaseAdmin.from('absences').select('id, starts_at, ends_at, absence_types(name), staff_profiles(full_name)').eq('company_id', auth.membership.companyId).in('status', ['approved', 'active']).order('starts_at', { ascending: true }).limit(10),
   ])
 
   return (
@@ -37,7 +36,7 @@ export default async function ReplanPage() {
         </FormCard>
 
         <section className="space-y-5">
-          <div className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Aktiva frånvaror</h2><div className="mt-4 space-y-3">{absences?.length ? absences.map((absence: any) => <div key={absence.id} className="rounded-2xl border border-slate-200 p-4"><p className="font-semibold text-slate-950">{absence.staff_profiles?.full_name ?? 'Personal'} · {absence.absence_types?.name ?? 'Frånvaro'}</p><p className="mt-1 text-xs text-slate-500">{new Date(absence.start_at).toLocaleString('sv-SE')} – {new Date(absence.end_at).toLocaleString('sv-SE')}</p></div>) : <p className="text-sm text-slate-600">Ingen aktiv frånvaro hittades.</p>}</div></div>
+          <div className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Aktiva frånvaror</h2><div className="mt-4 space-y-3">{absences?.length ? absences.map((absence: any) => <div key={absence.id} className="rounded-2xl border border-slate-200 p-4"><p className="font-semibold text-slate-950">{absence.staff_profiles?.full_name ?? 'Personal'} · {absence.absence_types?.name ?? 'Frånvaro'}</p><p className="mt-1 text-xs text-slate-500">{new Date(absence.starts_at).toLocaleString('sv-SE')} – {new Date(absence.ends_at).toLocaleString('sv-SE')}</p></div>) : <p className="text-sm text-slate-600">Ingen aktiv frånvaro hittades.</p>}</div></div>
           <div className="coordiqo-card p-5"><h2 className="text-lg font-semibold text-slate-950">Öppna konflikter</h2><div className="mt-4 space-y-3">{conflicts?.length ? conflicts.map((conflict: any) => <div key={conflict.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="font-semibold text-amber-950">{conflict.message}</p><p className="mt-1 text-xs text-amber-800">{conflict.tasks?.title ?? 'Uppdrag'} · {conflict.staff_profiles?.full_name ?? 'ingen personal'} · {conflict.conflict_type}</p></div>) : <p className="text-sm text-slate-600">Inga öppna konflikter.</p>}</div></div>
         </section>
       </div>

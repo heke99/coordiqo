@@ -9,7 +9,7 @@ import { createAiDecisionSupportRunAction, saveIntegrationSettingAction, syncNot
 import { getAiProviderConfig, isLangflowConfigured } from '@/lib/ai/orchestration'
 import { getNotionKnowledgeConfig } from '@/lib/knowledge/notion'
 import { messagingReadiness } from '@/lib/messaging/providers'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type IntegrationSettingRow = {
@@ -30,8 +30,7 @@ type AiRunRow = {
 }
 
 export default async function IntegrationsPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const companyId = auth.membership.companyId
   const aiConfig = getAiProviderConfig(auth.membership.locale)
   const langflowReady = isLangflowConfigured(aiConfig)

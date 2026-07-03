@@ -24,15 +24,17 @@ export function LoginForm() {
 
   const urlError = searchParams.get('error')
   const authMessage = useMemo(() => {
+    if (!urlError) return null
+
     if (urlError === 'no-membership') {
-      return 'Du är inloggad, men saknar aktiv företagstillhörighet. Fortsätt med onboarding för att komma vidare.'
+      return 'Du har ingen aktiv företagsmiljö ännu. Skapa eller ansök om åtkomst för att fortsätta.'
     }
 
-    if (urlError === 'inactive-company') {
-      return 'Det här företaget är inte aktivt just nu.'
+    if (urlError === 'inactive-company' || urlError === 'company-not-active') {
+      return 'Ditt företag är inte aktivt just nu. Kontakta support om du tror att detta är fel.'
     }
 
-    return urlError
+    return 'Något gick fel vid inloggningen. Försök igen.'
   }, [urlError])
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -104,7 +106,7 @@ export function LoginForm() {
               <p className="text-sm font-medium text-slate-500">Välkommen till Coordiqo</p>
               <h2 className="mt-1 text-2xl font-semibold text-slate-950">Logga in</h2>
             </div>
-            <a href="/book-demo" className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Request access</a>
+            <a href="/book-demo" className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Boka demo</a>
           </div>
 
           {(error || authMessage) && (

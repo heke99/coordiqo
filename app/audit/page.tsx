@@ -2,13 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { AppShell } from '@/components/app/app-shell'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { requireCompanyContextOrPlatformAdmin } from '@/lib/auth/guards'
 import { isPlatformAdminRole } from '@/lib/auth/permissions'
-import { requireAuth } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const auth = await requireAuth()
-  if (!auth.membership && !isPlatformAdminRole(auth.platformRole)) return null
+  const auth = await requireCompanyContextOrPlatformAdmin()
   const params = await searchParams
   const action = typeof params.action === 'string' ? params.action : ''
   const entityType = typeof params.entity_type === 'string' ? params.entity_type : ''

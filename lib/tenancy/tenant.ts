@@ -1,13 +1,8 @@
-import { redirect } from 'next/navigation'
-
-import { requireAuth } from '@/lib/auth/session'
-
-export async function requireActiveCompanyMembership() {
-  const auth = await requireAuth()
-
-  if (!auth.membership) {
-    redirect('/setup')
-  }
-
-  return auth.membership
-}
+export {
+  requireActiveCompanyMembership,
+  requireCompanyContext,
+  requireCompanyContextOrPlatformAdmin,
+  requireCompanyPermission,
+  requirePlatformAdmin,
+  type CompanyAuthContext,
+} from '@/lib/auth/guards'

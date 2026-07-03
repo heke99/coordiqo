@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, textareaClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { createExternalSmsMessageAction } from '@/lib/engines/actions'
-import { requireAuth } from '@/lib/auth/session'
+import { requireCompanyContext } from '@/lib/auth/guards'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type ExternalMessageRow = {
@@ -19,8 +19,7 @@ type ExternalMessageRow = {
 }
 
 export default async function MessagesPage() {
-  const auth = await requireAuth()
-  if (!auth.membership) return null
+  const auth = await requireCompanyContext()
   const { data: messages } = await supabaseAdmin
     .from('external_messages')
     .select('id, to_address, body, status, created_at, message_threads(subject, customer_label)')

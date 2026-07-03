@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { isPlatformAdminRole, type CompanyRole } from '@/lib/auth/permissions'
 import { requireAuth } from '@/lib/auth/session'
 import { queueAndSendEmail } from '@/lib/email/outbound'
+import { toFriendlyError } from '@/lib/errors/friendly-error'
 import { allCompanyCoreModules, getIndustryPreset, uniqueOperationalModels } from '@/lib/industry/config'
 import { logAuditEvent } from '@/lib/platform/audit'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -82,7 +83,7 @@ export async function submitDemoRequestAction(formData: FormData) {
   }
 
   const { data, error } = await supabaseAdmin.from('demo_requests').insert(payload).select('id').single()
-  if (error) throw new Error(error.message)
+  if (error) throw toFriendlyError(error)
 
   const lines = [
     'Ny demoansökan i Coordiqo',
@@ -142,7 +143,7 @@ export async function updateDemoRequestAction(formData: FormData) {
     next_contact_at: value(formData, 'next_contact_at') ? new Date(value(formData, 'next_contact_at')!).toISOString() : null,
   }
   const { error } = await supabaseAdmin.from('demo_requests').update(update).eq('id', id)
-  if (error) throw new Error(error.message)
+  if (error) throw toFriendlyError(error)
   await audit(null, auth.userId, 'demo_request.updated', 'demo_request', id, update)
   revalidatePath('/admin/demo-requests')
   revalidatePath(`/admin/demo-requests/${id}`)
@@ -154,7 +155,7 @@ export async function addDemoRequestNoteAction(formData: FormData) {
   const note = value(formData, 'note')
   if (!id || !note) throw new Error('Lead och notering krävs.')
   const { error } = await supabaseAdmin.from('demo_request_notes').insert({ demo_request_id: id, note, created_by: auth.userId })
-  if (error) throw new Error(error.message)
+  if (error) throw toFriendlyError(error)
   await audit(null, auth.userId, 'demo_request.note_added', 'demo_request', id)
   revalidatePath(`/admin/demo-requests/${id}`)
 }
@@ -165,7 +166,7 @@ export async function createCompanyFromDemoRequestAction(formData: FormData) {
   if (!requestId) throw new Error('Demoansökan saknas.')
 
   const { data: request, error: requestError } = await supabaseAdmin.from('demo_requests').select('*').eq('id', requestId).maybeSingle()
-  if (requestError) throw new Error(requestError.message)
+  if (requestError) throw toFriendlyError(requestError)
   if (!request) throw new Error('Demoansökan kunde inte hittas.')
   if (request.created_company_id) throw new Error('Bolag är redan skapat för denna demoansökan.')
 
@@ -200,7 +201,7 @@ export async function createCompanyFromDemoRequestAction(formData: FormData) {
     approved_by: auth.userId,
     approved_at: new Date().toISOString(),
   }).select('id').single()
-  if (companyError) throw new Error(companyError.message)
+  if (companyError) throw toFriendlyError(companyError)
 
   const preset = getIndustryPreset(industryType)
   const activeModules = allCompanyCoreModules()
@@ -314,7 +315,7 @@ export async function completeOnboardingAction(formData: FormData) {
     completed_by: auth.userId,
     completed_at: new Date().toISOString(),
   }, { onConflict: 'company_id' })
-  if (error) throw new Error(error.message)
+  if (error) throw toFriendlyError(error)
   await audit(companyId, auth.userId, 'onboarding.completed', 'company_onboarding_session', companyId)
   redirect('/dashboard')
 }
