@@ -198,6 +198,55 @@ export async function updateCompanyCommercialAction(formData: FormData) {
   revalidatePath(`/admin/companies/${companyId}`)
 }
 
+export async function resendInvitationAdminAction(formData: FormData) {
+  const auth = await requirePlatformAdmin()
+  const id = value(formData, 'invitation_id')
+  if (!id) throw new Error('Inbjudan saknas.')
+
+  const { data: invitation, error } = await supabaseAdmin
+    .from('company_invitations')
+    .select('id, company_id, email, full_name, role, token, status, resend_count, companies(name)')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw toFriendlyError(error)
+  if (!invitation) throw new Error('Inbjudan kunde inte hittas.')
+  if (invitation.status !== 'pending') throw new Error('Endast aktiva inbjudningar kan skickas om.')
+
+  const companyName = (invitation as any).companies?.name ?? 'ert bolag'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  const acceptUrl = `${siteUrl}/invite/accept?token=${invitation.token}`
+
+  const { queueAndSendEmail } = await import('@/lib/email/outbound')
+  const delivery = await queueAndSendEmail({
+    companyId: invitation.company_id,
+    to: invitation.email,
+    subject: `Påminnelse: inbjudan till ${companyName} i Coordiqo`,
+    bodyText: [
+      `Hej${invitation.full_name ? ` ${invitation.full_name}` : ''},`,
+      '',
+      `Du har fortfarande en aktiv inbjudan till ${companyName}.`,
+      '',
+      `Acceptera inbjudan här: ${acceptUrl}`,
+    ].join('\n'),
+    relatedEntityType: 'company_invitation',
+    relatedEntityId: invitation.id,
+    createdBy: auth.userId,
+  })
+
+  await supabaseAdmin
+    .from('company_invitations')
+    .update({
+      resend_count: Number(invitation.resend_count ?? 0) + 1,
+      last_resent_at: new Date().toISOString(),
+      email_delivery_status: delivery.status === 'sent' ? 'sent' : delivery.status === 'failed' ? 'failed' : 'queued',
+    })
+    .eq('id', id)
+
+  await audit(invitation.company_id, auth.userId, 'invitation.resent_by_admin', 'company_invitation', id, { delivery: delivery.status })
+  revalidatePath('/admin/demo-requests')
+  revalidatePath(`/admin/companies/${invitation.company_id}`)
+}
+
 export async function repairAllMissingDefaultsAction() {
   const auth = await requirePlatformAdmin()
 

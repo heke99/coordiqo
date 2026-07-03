@@ -1,3 +1,4 @@
+import { getFromEmail } from '@/lib/config/emails'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type SendEmailInput = {
@@ -46,7 +47,7 @@ export async function queueAndSendEmail(input: SendEmailInput) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: process.env.INVITE_EMAIL_FROM ?? 'Coordiqo <noreply@coordiqo.se>',
+        from: getFromEmail(),
         to: [input.to],
         subject: input.subject,
         text: input.bodyText,

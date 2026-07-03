@@ -6,6 +6,8 @@ import { AppShell } from '@/components/app/app-shell'
 import { Field, inputClassName, selectClassName } from '@/components/ui/form-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { requirePlatformAdmin } from '@/lib/auth/guards'
+import { getIndustryRegistry } from '@/lib/industry/registry'
+import { DEMO_STATUS_ORDER, demoStatusLabel } from '@/lib/sales/demo-config'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 type DemoRequestRow = {
@@ -23,9 +25,7 @@ type DemoRequestRow = {
   created_at: string
 }
 
-const statuses = ['new', 'contacted', 'demo_booked', 'offer_sent', 'won', 'lost', 'onboarding_started']
-
-export default async function AdminDemoRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; industry?: string; assigned_to?: string; q?: string }> }) {
+export default async function AdminDemoRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; industry?: string; assigned_to?: string; q?: string; overdue?: string }> }) {
   const auth = await requirePlatformAdmin()
   const params = await searchParams
 
@@ -36,64 +36,74 @@ export default async function AdminDemoRequestsPage({ searchParams }: { searchPa
     .limit(200)
 
   if (params.status) query = query.eq('status', params.status)
+  else query = query.neq('status', 'archived')
   if (params.industry) query = query.eq('industry', params.industry)
   if (params.assigned_to) query = query.eq('assigned_to', params.assigned_to)
+  if (params.overdue === '1') query = query.lt('next_contact_at', new Date().toISOString())
   if (params.q) {
     const search = `%${params.q}%`
     query = query.or(`company_name.ilike.${search},email.ilike.${search},organization_number.ilike.${search}`)
   }
 
-  const [{ data: requests }, { data: admins }, { data: readiness }] = await Promise.all([
+  const [{ data: requests }, { data: admins }, { data: readiness }, registry] = await Promise.all([
     query,
     supabaseAdmin.from('profiles').select('id, email, full_name').in('platform_role', ['owner', 'platform_admin', 'support_admin']).order('email'),
     supabaseAdmin.from('coordiqo_demo_request_readiness_v').select('*').maybeSingle(),
+    getIndustryRegistry(),
   ])
   const rows = (requests ?? []) as DemoRequestRow[]
   const adminRows = (admins ?? []) as Array<{ id: string; email: string | null; full_name: string | null }>
-  const stats = readiness as {
-    total_leads?: number
-    new_leads?: number
-    contacted_leads?: number
-    demo_booked_leads?: number
-    won_leads?: number
-    lost_leads?: number
-    onboarding_started_leads?: number
-  } | null
+  const stats = (readiness ?? {}) as Record<string, number>
+  const industryName = (code: string | null) => registry.find((profile) => profile.code === code)?.nameSv ?? code ?? '—'
+
+  const statCards: Array<[string, number]> = [
+    ['Totalt', stats.total_leads ?? rows.length],
+    ['Nya', stats.new_leads ?? 0],
+    ['Kontaktade', stats.contacted_leads ?? 0],
+    ['Kvalificerade', stats.qualified_leads ?? 0],
+    ['Demo bokad', stats.demo_booked_leads ?? 0],
+    ['Bolag skapade', stats.company_created_leads ?? 0],
+    ['Vunna', stats.won_leads ?? 0],
+    ['Förlorade', stats.lost_leads ?? 0],
+  ]
 
   return (
-    <AppShell auth={auth} title="Demo requests" subtitle="Sales-led leads, qualification, demo booking and onboarding start.">
+    <AppShell auth={auth} title="Demoansökningar" subtitle="Leads från webbplatsen: kvalificering, demobokning, pilot och bolagsskapande.">
       <div className="space-y-5">
-        <section className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-          {[
-            ['Total', stats?.total_leads ?? rows.length],
-            ['New', stats?.new_leads ?? 0],
-            ['Contacted', stats?.contacted_leads ?? 0],
-            ['Demo booked', stats?.demo_booked_leads ?? 0],
-            ['Won', stats?.won_leads ?? 0],
-            ['Lost', stats?.lost_leads ?? 0],
-            ['Onboarding', stats?.onboarding_started_leads ?? 0],
-          ].map(([label, value]) => (
+        <section className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
+          {statCards.map(([label, value]) => (
             <div key={label} className="coordiqo-card p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p></div>
           ))}
         </section>
 
         <section className="coordiqo-card p-5">
-          <form className="grid gap-3 md:grid-cols-[1fr_180px_180px_220px_auto]">
-            <Field label="Search"><input name="q" defaultValue={params.q ?? ''} className={inputClassName} placeholder="Company, email or org number" /></Field>
+          <form className="grid gap-3 md:grid-cols-[1fr_170px_190px_200px_150px_auto]">
+            <Field label="Sök"><input name="q" defaultValue={params.q ?? ''} className={inputClassName} placeholder="Företag, e-post eller org.nr" /></Field>
             <Field label="Status">
               <select name="status" defaultValue={params.status ?? ''} className={selectClassName}>
-                <option value="">All</option>
-                {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                <option value="">Alla (utom arkiverade)</option>
+                {DEMO_STATUS_ORDER.map((status) => <option key={status} value={status}>{demoStatusLabel(status)}</option>)}
               </select>
             </Field>
-            <Field label="Industry"><input name="industry" defaultValue={params.industry ?? ''} className={inputClassName} /></Field>
-            <Field label="Assigned">
+            <Field label="Bransch">
+              <select name="industry" defaultValue={params.industry ?? ''} className={selectClassName}>
+                <option value="">Alla</option>
+                {registry.map((profile) => <option key={profile.code} value={profile.code}>{profile.nameSv}</option>)}
+              </select>
+            </Field>
+            <Field label="Ansvarig">
               <select name="assigned_to" defaultValue={params.assigned_to ?? ''} className={selectClassName}>
-                <option value="">All</option>
+                <option value="">Alla</option>
                 {adminRows.map((admin) => <option key={admin.id} value={admin.id}>{admin.full_name ?? admin.email ?? admin.id}</option>)}
               </select>
             </Field>
-            <div className="flex items-end"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Filter</button></div>
+            <Field label="Uppföljning">
+              <select name="overdue" defaultValue={params.overdue ?? ''} className={selectClassName}>
+                <option value="">Alla</option>
+                <option value="1">Försenad kontakt</option>
+              </select>
+            </Field>
+            <div className="flex items-end"><button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Filtrera</button></div>
           </form>
         </section>
 
@@ -102,41 +112,40 @@ export default async function AdminDemoRequestsPage({ searchParams }: { searchPa
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Company</th>
-                  <th className="px-4 py-3">Org no</th>
-                  <th className="px-4 py-3">Contact</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Phone</th>
-                  <th className="px-4 py-3">Industry</th>
-                  <th className="px-4 py-3">Employees</th>
+                  <th className="px-4 py-3">Företag</th>
+                  <th className="px-4 py-3">Org.nr</th>
+                  <th className="px-4 py-3">Kontakt</th>
+                  <th className="px-4 py-3">E-post</th>
+                  <th className="px-4 py-3">Bransch</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Next contact</th>
-                  <th className="px-4 py-3">Assigned</th>
-                  <th className="px-4 py-3">Created</th>
+                  <th className="px-4 py-3">Nästa kontakt</th>
+                  <th className="px-4 py-3">Ansvarig</th>
+                  <th className="px-4 py-3">Skapad</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {rows.map((request) => (
-                  <tr key={request.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-semibold text-slate-950"><Link href={`/admin/demo-requests/${request.id}`}>{request.company_name}</Link></td>
-                    <td className="px-4 py-3 text-slate-600">{request.organization_number ?? '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{request.contact_name}</td>
-                    <td className="px-4 py-3 text-slate-600">{request.email}</td>
-                    <td className="px-4 py-3 text-slate-600">{request.phone ?? '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{request.industry ?? '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{request.employee_count ?? '-'}</td>
-                    <td className="px-4 py-3"><StatusBadge status={request.status} /></td>
-                    <td className="px-4 py-3 text-slate-600">{request.next_contact_at ? new Date(request.next_contact_at).toLocaleDateString('sv-SE') : '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{adminRows.find((admin) => admin.id === request.assigned_to)?.email ?? '-'}</td>
-                    <td className="px-4 py-3 text-slate-600">{new Date(request.created_at).toLocaleDateString('sv-SE')}</td>
-                  </tr>
-                ))}
+                {rows.map((request) => {
+                  const overdue = request.next_contact_at && new Date(request.next_contact_at) < new Date() && !['won', 'lost', 'archived'].includes(request.status)
+                  return (
+                    <tr key={request.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-semibold text-slate-950"><Link href={`/admin/demo-requests/${request.id}`}>{request.company_name}</Link></td>
+                      <td className="px-4 py-3 text-slate-600">{request.organization_number ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{request.contact_name}</td>
+                      <td className="px-4 py-3 text-slate-600">{request.email}</td>
+                      <td className="px-4 py-3 text-slate-600">{industryName(request.industry)}</td>
+                      <td className="px-4 py-3"><StatusBadge status={demoStatusLabel(request.status)} tone={request.status === 'won' ? 'success' : request.status === 'lost' ? 'danger' : request.status === 'new' ? 'warning' : 'neutral'} /></td>
+                      <td className={`px-4 py-3 ${overdue ? 'font-semibold text-red-600' : 'text-slate-600'}`}>{request.next_contact_at ? new Date(request.next_contact_at).toLocaleDateString('sv-SE') : '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{adminRows.find((admin) => admin.id === request.assigned_to)?.full_name ?? adminRows.find((admin) => admin.id === request.assigned_to)?.email ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{new Date(request.created_at).toLocaleDateString('sv-SE')}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
+            {!rows.length && <p className="px-4 py-8 text-center text-sm text-slate-600">Inga leads matchar filtren.</p>}
           </div>
         </section>
       </div>
     </AppShell>
   )
 }
-
